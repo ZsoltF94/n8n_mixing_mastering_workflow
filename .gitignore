@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+/AGENTS.md
+/roadmaps/
+/POSTGRES_COMMANDS.md

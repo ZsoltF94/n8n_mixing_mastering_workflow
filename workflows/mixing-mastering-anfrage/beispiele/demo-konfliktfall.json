@@ -1,0 +1,37 @@
+{
+  "beschreibung": "Vollständig künstlicher Zwei-Runden-Fall zur nachvollziehbaren Begutachtung ohne Credentials.",
+  "startformular": {
+    "first_name": "Mara",
+    "last_name": "Beispiel",
+    "email": "mara.beispiel@example.invalid",
+    "selected_service": "mixing",
+    "message": "Mein Name ist Mara. Ich benötige ausschließlich Mastering für meinen Demo-Song.",
+    "download_url": "https://example.invalid/demo-audio.zip"
+  },
+  "openai_payload_nach_lokaler_pruefung": {
+    "selected_service": "mixing",
+    "message": "Mein Name ist [[PII_NAME_1]]. Ich benötige ausschließlich Mastering für meinen Demo-Song."
+  },
+  "erwartete_erste_auswertung": {
+    "classification": "service_conflict",
+    "status": "awaiting_owner_review",
+    "service_unklar": true
+  },
+  "erste_ergaenzung": {
+    "selected_service": "mixing_and_mastering",
+    "message": "Ich möchte doch nur Mastering.",
+    "erwarteter_status_nach_erneuter_auswertung": "awaiting_owner_review"
+  },
+  "zweite_ergaenzung": {
+    "selected_service": "mixing_and_mastering",
+    "message": "Ich möchte Mixing und Mastering.",
+    "erwarteter_status_nach_erneuter_auswertung": "ready_for_processing"
+  },
+  "erwarteter_abschluss": {
+    "followup_count": 2,
+    "confirmed_service": "mixing_and_mastering",
+    "service_unklar": false,
+    "kundenrueckfragen": 2,
+    "notion": "Dieselbe Seite zeigt den aktuellen PostgreSQL-Status."
+  }
+}

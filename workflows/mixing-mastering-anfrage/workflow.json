@@ -1,0 +1,2486 @@
+{
+  "name": "Mixing & Mastering Demo - Anfrageworkflow",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "none",
+        "formTitle": "Mixing- und Mastering-Anfrage (Demo)",
+        "formDescription": "Portfolio-Demo: Bitte nur erfundene Angaben und Testlinks verwenden.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "first_name",
+              "fieldLabel": "Vorname",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "last_name",
+              "fieldLabel": "Nachname",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldName": "email",
+              "fieldLabel": "E-Mail-Adresse",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldName": "selected_service",
+              "fieldLabel": "Gewünschter Service",
+              "fieldType": "radio",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Mixing"
+                  },
+                  {
+                    "option": "Mastering"
+                  },
+                  {
+                    "option": "Mixing + Mastering"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "message",
+              "fieldLabel": "Nachricht",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldName": "download_url",
+              "fieldLabel": "Downloadlink zu den Dateien",
+              "fieldType": "text",
+              "placeholder": "https://example.invalid/dateien",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "mixing-mastering-anfrage-demo",
+          "buttonLabel": "Demo-Anfrage senden",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Ihre Demo-Anfrage wurde gespeichert. Bitte verwenden Sie den Bestätigungslink aus der Test-E-Mail, damit die Anfrage weiterverarbeitet wird."
+            }
+          }
+        }
+      },
+      "id": "1dd22b37-9140-438f-a551-431d8604d350",
+      "name": "Anfrageformular",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        272,
+        304
+      ],
+      "webhookId": "81e80f10-bc66-423e-8bcb-9f8f12be05ea"
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "submission_key",
+        "encodingType": "uuid"
+      },
+      "id": "79c8dcc6-6a1e-4f88-b79b-2b9694ac6fcb",
+      "name": "Formularschlüssel erzeugen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        528,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Liest die einzelne Formularübermittlung dieses Workflow-Laufs.\nconst raw = $input.first().json;\n// Pflichtfelder werden getrimmt und gegen ihre maximale Länge geprüft.\nconst read = (name, max) => {\n  const value = raw[name];\n  if (typeof value !== 'string') throw new Error(`Feld ${name} fehlt`);\n  const result = value.trim();\n  if (!result || result.length > max) throw new Error(`Feld ${name} ist ungültig`);\n  return result;\n};\n// Die intern erzeugte UUID schützt den Datenbank-Insert vor doppelter Verarbeitung.\nconst submissionKey = read('submission_key', 36);\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(submissionKey)) throw new Error('Ungültiger Formularschlüssel');\n// Übersetzt die sichtbare Formularauswahl in stabile interne Servicewerte.\nconst services = { Mixing: 'mixing', Mastering: 'mastering', 'Mixing + Mastering': 'mixing_and_mastering' };\nconst choice = read('selected_service', 40);\nif (!Object.prototype.hasOwnProperty.call(services, choice)) throw new Error('Ungültiger Service');\n// Die E-Mail-Adresse wird nur formal geprüft; ein echter Besitznachweis folgt per Bestätigungslink.\nconst email = read('email', 254);\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error('Ungültige E-Mail-Adresse');\n// Der Downloadlink wird nur syntaktisch geprüft und niemals geöffnet oder heruntergeladen.\nconst downloadUrl = read('download_url', 2000);\nconst link = /^https?:\\/\\/([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::([0-9]{1,5}))?(?:[/?#][^\\s]*)?$/i.exec(downloadUrl);\nconst hostname = link?.[1];\nconst port = link?.[2];\nconst labels = hostname?.split('.') || [];\nif (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)) || (port && (Number(port) < 1 || Number(port) > 65535))) throw new Error('Ungültiger Downloadlink');\n// Gibt ausschließlich normalisierte Werte an den parametrisierten PostgreSQL-Insert weiter.\nreturn [{ json: { submission_key: submissionKey, first_name: read('first_name', 120), last_name: read('last_name', 120), email, selected_service: services[choice], message: read('message', 5000), download_url: downloadUrl } }];"
+      },
+      "id": "12001470-bc50-40a8-b1aa-945af31fadca",
+      "name": "Formularangaben prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.inquiries (\n  submission_key, first_name, last_name, email,\n  selected_service, message, download_url\n) VALUES (\n  $1::uuid, $2, $3, $4, $5, $6, $7\n)\nON CONFLICT (submission_key) DO NOTHING\nRETURNING id::text AS inquiry_id, status;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.submission_key, $json.first_name, $json.last_name, $json.email, $json.selected_service, $json.message, $json.download_url] }}"
+        }
+      },
+      "id": "2b266922-5523-4935-80c5-0346dca23930",
+      "name": "Anfrage in PostgreSQL speichern",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1040,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "verification_token",
+        "encodingType": "hex",
+        "stringLength": 64
+      },
+      "id": "7ba21e23-f224-4f5c-9646-9f9805ce293f",
+      "name": "Bestätigungstoken erzeugen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.verification_token }}",
+        "dataPropertyName": "token_hash",
+        "encoding": "hex"
+      },
+      "id": "b0c66f76-dbff-4ea2-a841-d5d1d6829e2a",
+      "name": "Bestätigungstoken hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH created_token AS (\n  INSERT INTO public.access_tokens (\n    inquiry_id, purpose, token_hash, expires_at\n  )\n  SELECT $1::uuid, 'email_verification', $2, now() + interval '30 minutes'\n  WHERE $3 = 'pending_verification'\n  ON CONFLICT (token_hash) DO NOTHING\n  RETURNING inquiry_id, expires_at\n), planned_email AS (\n  INSERT INTO public.outbound_actions (\n    inquiry_id, kind, idempotency_key\n  )\n  SELECT inquiry_id, 'verification_email', 'verification_email:' || inquiry_id::text\n  FROM created_token\n  ON CONFLICT (idempotency_key) DO NOTHING\n  RETURNING inquiry_id\n)\nSELECT\n  created_token.inquiry_id::text AS inquiry_id,\n  created_token.expires_at,\n  EXISTS (SELECT 1 FROM planned_email) AS verification_email_planned\nFROM created_token;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id, $json.token_hash, $json.status] }}"
+        }
+      },
+      "id": "674b669c-d741-423a-bccd-0a170016cfdd",
+      "name": "Bestätigung vorbereiten",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1824,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mixing-mastering-email-bestaetigen",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9c43d9b7-d402-44e1-941b-4dd8680cb716",
+      "name": "E-Mail bestätigen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        1728
+      ],
+      "webhookId": "8e3b84d0-4b82-4188-9bb3-f0bd37b351e6"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Liest den Token ausschließlich aus dem Query-Parameter des Bestätigungs-Webhooks.\nconst token = $input.first().json?.query?.token;\n// Nur ein 64-stelliger Hexwert wird weitergegeben; alles andere erhält den sicheren Wert `invalid`.\nconst verification_token = typeof token === 'string' && /^[0-9a-f]{64}$/i.test(token)\n  ? token.toLowerCase()\n  : 'invalid';\n// Der nächste Crypto-Node hasht auch den ungültigen Ersatzwert in einem einheitlichen Ablauf.\nreturn [{ json: { verification_token } }];"
+      },
+      "id": "dc4c7f5c-5750-4d40-a0c9-d45f26d4f729",
+      "name": "Bestätigungstoken prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.verification_token }}",
+        "dataPropertyName": "token_hash",
+        "encoding": "hex"
+      },
+      "id": "f43d87ae-19e7-4d49-bdee-fc06cd34c603",
+      "name": "Eingehenden Token hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        576,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS MATERIALIZED (\n  SELECT\n    token.id AS token_id,\n    token.inquiry_id,\n    token.expires_at,\n    token.used_at,\n    token.revoked_at,\n    inquiry.status\n  FROM public.access_tokens AS token\n  JOIN public.inquiries AS inquiry ON inquiry.id = token.inquiry_id\n  WHERE token.token_hash = $1\n    AND token.purpose = 'email_verification'\n), eligible AS (\n  SELECT *\n  FROM matched\n  WHERE used_at IS NULL\n    AND revoked_at IS NULL\n    AND expires_at > now()\n    AND status = 'pending_verification'\n), consumed AS (\n  UPDATE public.access_tokens AS token\n  SET used_at = now()\n  FROM eligible\n  WHERE token.id = eligible.token_id\n  RETURNING token.inquiry_id\n), advanced AS (\n  UPDATE public.inquiries AS inquiry\n  SET status = 'evaluating', email_verified_at = now(), updated_at = now()\n  FROM consumed\n  WHERE inquiry.id = consumed.inquiry_id\n    AND inquiry.status = 'pending_verification'\n  RETURNING inquiry.id\n), expired AS (\n  UPDATE public.inquiries AS inquiry\n  SET status = 'verification_expired', updated_at = now()\n  FROM matched\n  WHERE inquiry.id = matched.inquiry_id\n    AND matched.used_at IS NULL\n    AND matched.revoked_at IS NULL\n    AND matched.expires_at <= now()\n    AND inquiry.status = 'pending_verification'\n  RETURNING inquiry.id\n)\nSELECT\n  CASE\n    WHEN EXISTS (SELECT 1 FROM advanced) THEN 'verified'\n    WHEN NOT EXISTS (SELECT 1 FROM matched) THEN 'invalid'\n    WHEN (SELECT revoked_at FROM matched LIMIT 1) IS NOT NULL THEN 'revoked'\n    WHEN (SELECT used_at FROM matched LIMIT 1) IS NOT NULL THEN 'already_used'\n    WHEN (SELECT expires_at FROM matched LIMIT 1) <= now() THEN 'expired'\n    ELSE 'unavailable'\n  END AS outcome,\n  COALESCE(\n    (SELECT id::text FROM advanced LIMIT 1),\n    (SELECT inquiry_id::text FROM matched LIMIT 1)\n  ) AS inquiry_id;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.token_hash] }}"
+        }
+      },
+      "id": "b3f015e7-d227-43d0-9e6a-0aed6873a40e",
+      "name": "Bestätigung einmalig verbuchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        832,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Übersetzt das Datenbankergebnis in eine kontrollierte HTTP-Antwort für den Browser.\nconst outcome = $input.first().json.outcome;\n// Jeder bekannte Ausgang besitzt einen festen Statuscode und einen festen, datenfreien Text.\nconst responses = {\n  verified: [200, 'Vielen Dank. Ihre E-Mail-Adresse wurde bestätigt und die Demo-Anfrage wird jetzt geprüft.'],\n  already_used: [200, 'Dieser Link wurde bereits verwendet. Die E-Mail-Adresse ist schon bestätigt.'],\n  expired: [410, 'Dieser Bestätigungslink ist abgelaufen.'],\n  revoked: [410, 'Dieser Bestätigungslink ist nicht mehr gültig.'],\n  invalid: [400, 'Dieser Bestätigungslink ist ungültig.'],\n  unavailable: [409, 'Die Anfrage kann mit diesem Link derzeit nicht bestätigt werden.'],\n};\n// Unbekannte Ergebnisse fallen auf eine neutrale, sichere Antwort zurück.\nconst [response_code, response_text] = responses[outcome] || responses.unavailable;\nreturn [{ json: { outcome, response_code, response_text } }];"
+      },
+      "id": "251d8808-e993-4a64-961c-a4fe846c779f",
+      "name": "Bestätigungsantwort formulieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response_text }}",
+        "options": {
+          "responseCode": "={{ $json.response_code }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6f090407-7b91-499e-b85d-15432aa50b0d",
+      "name": "Bestätigung anzeigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: Anfrage speichern\n\n**Tabelle `inquiries` – INSERT**\n\n- Übernimmt die zuvor geprüften Felder `submission_key`, `first_name`, `last_name`, `email`, `selected_service`, `message` und `download_url`.\n- Legt genau eine neue Anfrage an. Die Datenbank erzeugt `id`, `created_at` und `updated_at`; der Startstatus ist `pending_verification`.\n- `submission_key` ist eindeutig. `ON CONFLICT ... DO NOTHING` verhindert einen zweiten Datensatz mit demselben Schlüssel.\n- Alle Werte werden als SQL-Parameter übergeben und nicht in den SQL-Text eingesetzt.\n- Gibt nur bei einer neu angelegten Zeile `inquiry_id` und `status` an den nächsten Node weiter.\n\n**Andere Tabellen:** keine Änderung.",
+        "height": 420,
+        "width": 392,
+        "color": 5
+      },
+      "id": "8295c10d-1c5b-4c93-a76b-bb165ba1a48c",
+      "name": "Hinweis - Anfrage speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        912,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: Bestätigung vorbereiten\n\n**Tabelle `access_tokens` – INSERT**\n\n- Verknüpft den SHA-256-Hash über `inquiry_id` mit der zuvor angelegten Anfrage. Der Roh-Token wird nicht gespeichert.\n- Setzt `purpose = email_verification` und `expires_at = now() + 30 Minuten`; `used_at` und `revoked_at` bleiben leer.\n- Legt den Token nur an, wenn die Anfrage noch den Status `pending_verification` hat.\n\n**Tabelle `outbound_actions` – INSERT**\n\n- Plant für dieselbe `inquiry_id` die Aktion `verification_email`; der Startzustand ist `pending`.\n- Der eindeutige Schlüssel `verification_email:<inquiry_id>` verhindert eine zweite Planung derselben Bestätigungs-E-Mail.\n- Gibt `inquiry_id`, Ablaufzeit und `verification_email_planned` weiter.\n- Versendet selbst noch keine E-Mail.\n\n**Tabelle `inquiries`:** keine Änderung.",
+        "height": 500,
+        "width": 424,
+        "color": 5
+      },
+      "id": "2bdd8abd-dc6a-4c85-932f-620b9b195c41",
+      "name": "Hinweis - Bestätigung vorbereiten",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: Bestätigung verbuchen\n\n**Tabellen `access_tokens` und `inquiries` – SELECT**\n\n- Sucht `token_hash` mit `purpose = email_verification` und verbindet den Token über `inquiry_id` mit seiner Anfrage.\n- Prüft `used_at`, `revoked_at`, `expires_at` und den aktuellen Anfragestatus.\n\n**Tabelle `access_tokens` – UPDATE**\n\n- Nur ein unbenutzter, nicht widerrufener und nicht abgelaufener Token zu einer Anfrage mit `pending_verification` erhält `used_at = now()`.\n\n**Tabelle `inquiries` – UPDATE**\n\n- Bei gültiger Bestätigung: `status = evaluating`, `email_verified_at = now()` und `updated_at = now()`.\n- Bei abgelaufenem, noch unbenutztem Token: `status = verification_expired` und Aktualisierung von `updated_at`.\n- Bei `already_used`, `revoked` oder `invalid` wird die Anfrage nicht verändert.\n\n- Alle Schritte laufen gemeinsam in einer SQL-Anweisung. Ausgegeben werden `outcome` und die interne `inquiry_id`; nur bei `verified` darf diese ID die fachliche Auswertung starten.",
+        "height": 540,
+        "width": 448,
+        "color": 5
+      },
+      "id": "41044837-f9ec-47cb-a2cd-b7ce97216275",
+      "name": "Hinweis - Bestätigung verbuchen",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        688,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions\nSET\n  state = 'in_progress',\n  attempt_count = attempt_count + 1,\n  last_attempt_at = now(),\n  last_error_code = NULL\nWHERE inquiry_id = $1::uuid\n  AND kind = 'verification_email'\n  AND state = 'pending'\nRETURNING inquiry_id::text AS inquiry_id, state;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id] }}"
+        }
+      },
+      "id": "712f37d0-e901-44ef-b286-c823178c6de6",
+      "name": "Versandaktion beanspruchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2256,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Formularangaben prüfen').first().json.email }}",
+        "subject": "Bitte bestätigen Sie Ihre E-Mail-Adresse – Mixing-/Mastering-Anfrage",
+        "emailType": "text",
+        "message": "={{ 'Guten Tag ' + $('Formularangaben prüfen').first().json.first_name + ' ' + $('Formularangaben prüfen').first().json.last_name + ',\\n\\nvielen Dank für Ihre Demo-Anfrage. Bitte bestätigen Sie Ihre E-Mail-Adresse über den folgenden Link:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-email-bestaetigen?token=' + $('Bestätigungstoken erzeugen').first().json.verification_token + '\\n\\nDer Link ist 30 Minuten gültig und kann nur einmal verwendet werden.\\n\\nDies ist eine Portfolio-Demo. Bitte verwenden Sie ausschließlich Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Mixing & Mastering Demo"
+        }
+      },
+      "id": "fca82c2c-cce6-40dc-8038-83016ea3c432",
+      "name": "Gmail - Bestätigungslink senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2560,
+        304
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions\nSET\n  state = 'succeeded',\n  completed_at = now(),\n  external_reference = $2,\n  last_error_code = NULL\nWHERE inquiry_id = $1::uuid\n  AND kind = 'verification_email'\n  AND state = 'in_progress'\nRETURNING inquiry_id::text AS inquiry_id, state, completed_at;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Versandaktion beanspruchen').first().json.inquiry_id, $json.id || null] }}"
+        }
+      },
+      "id": "89cd9854-c0b9-4cd9-a1f5-9864a4991a8f",
+      "name": "Versand als erfolgreich markieren",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2816,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions\nSET\n  state = 'needs_review',\n  last_error_code = 'gmail_send_error'\nWHERE inquiry_id = $1::uuid\n  AND kind = 'verification_email'\n  AND state = 'in_progress'\nRETURNING inquiry_id::text AS inquiry_id, state, last_error_code;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Versandaktion beanspruchen').first().json.inquiry_id] }}"
+        }
+      },
+      "id": "82f9fdaa-8347-4ad2-8507-25c625927aea",
+      "name": "Versand zur Prüfung markieren",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2816,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: Versand beanspruchen\n\n**Tabelle `outbound_actions` – UPDATE**\n\n- Sucht zur aktuellen `inquiry_id` die geplante Aktion mit `kind = verification_email`.\n- Beansprucht sie ausschließlich aus dem Zustand `pending` und setzt `state = in_progress`.\n- Erhöht `attempt_count` und setzt `last_attempt_at = now()`.\n- Durch das bedingte Update kann nur eine Ausführung die Versandaktion übernehmen.\n- Gibt nur bei erfolgreicher Beanspruchung `inquiry_id` und `state` weiter; ohne Ausgabe startet kein Gmail-Versand.\n\n**Andere Tabellen:** keine Änderung.",
+        "height": 390,
+        "width": 384,
+        "color": 5
+      },
+      "id": "d6939de2-58c6-4fe3-bbc6-5ae8d71ca3a7",
+      "name": "Hinweis - Versand beanspruchen",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1776,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Gmail: Bestätigungslink senden\n\n- Empfänger ist die zuvor geprüfte Test-E-Mail-Adresse aus `Formularangaben prüfen`.\n- Der Klartext enthält Anrede, Demo-Hinweis, Gültigkeitsdauer und den einmaligen Bestätigungslink.\n- Der Link verwendet den nur in dieser Ausführung vorhandenen Roh-Token; PostgreSQL kennt ausschließlich dessen SHA-256-Hash.\n- `localhost:5678/webhook-test/...` verweist beim Öffnen auf die lokale n8n-Testinstanz. Der Webhook-Test-Listener muss dann aktiv sein.\n- Erfolgreiche und fehlgeschlagene Ausgaben laufen getrennt zu den beiden folgenden PostgreSQL-Nodes.\n- Gmail erhält keine Nachricht, keinen Downloadlink und keine Audiodateien.",
+        "height": 420,
+        "width": 364,
+        "color": 3
+      },
+      "id": "da10787c-46e1-4b53-97ef-f9765a8db1de",
+      "name": "Hinweis - Gmail-Bestätigungslink",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2184,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: Versandergebnis speichern\n\n**Tabelle `outbound_actions` – UPDATE**\n\n- Erfolgszweig: setzt die beanspruchte Aktion von `in_progress` auf `succeeded`, trägt `completed_at` ein und speichert die Gmail-Nachrichten-ID als `external_reference`.\n- Fehlerzweig: setzt dieselbe Aktion auf `needs_review` und speichert ausschließlich den technischen Code `gmail_send_error`.\n- E-Mail-Inhalte oder personenbezogene Fehlermeldungen werden nicht dupliziert.\n- Eine Aktion in `needs_review` wird nicht automatisch erneut versendet.\n\n**Andere Tabellen:** keine Änderung.",
+        "height": 360,
+        "width": 460,
+        "color": 5
+      },
+      "id": "81b96055-4b65-4450-a085-8684b0474c9d",
+      "name": "Hinweis - Versandergebnis speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2576,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Startet die Auswertung nur unmittelbar nach einer erstmalig erfolgreichen Bestätigung.\nconst item = $input.first().json;\n// Wiederverwendete, abgelaufene oder ungültige Links erzeugen keinen weiteren Verarbeitungslauf.\nif (item.outcome !== 'verified' || typeof item.inquiry_id !== 'string') return [];\nreturn [{ json: { inquiry_id: item.inquiry_id } }];"
+      },
+      "id": "647778cc-15ad-495b-9fca-98ccc19735aa",
+      "name": "Nur neue Bestätigung auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  inquiry.id::text AS inquiry_id,\n  inquiry.first_name,\n  inquiry.last_name,\n  inquiry.email,\n  COALESCE(latest_update.service_selection, inquiry.selected_service) AS selected_service,\n  COALESCE(latest_update.message, inquiry.message) AS message\nFROM public.inquiries AS inquiry\nLEFT JOIN LATERAL (\n  SELECT service_selection, message\n  FROM public.inquiry_updates\n  WHERE inquiry_id = inquiry.id\n  ORDER BY created_at DESC, id DESC\n  LIMIT 1\n) AS latest_update ON true\nWHERE inquiry.id = $1::uuid\n  AND inquiry.status = 'evaluating';",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id] }}"
+        }
+      },
+      "id": "96e1b106-5f2c-4785-8191-12904611170b",
+      "name": "Anfrage für Auswertung laden",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1952,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Prüft und pseudonymisiert eine einzelne bestätigte Anfrage vollständig lokal vor OpenAI.\nconst input = $input.first().json;\nconst allowedServices = new Set(['mixing', 'mastering', 'mixing_and_mastering']);\nconst inquiryId = typeof input.inquiry_id === 'string' ? input.inquiry_id : '';\nconst selectedService = typeof input.selected_service === 'string' ? input.selected_service : '';\nconst message = typeof input.message === 'string' ? input.message.trim() : '';\nconst firstName = typeof input.first_name === 'string' ? input.first_name.trim() : '';\nconst lastName = typeof input.last_name === 'string' ? input.last_name.trim() : '';\nconst knownEmail = typeof input.email === 'string' ? input.email.trim() : '';\n\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(inquiryId)) throw new Error('Ungültige inquiry_id');\nif (!allowedServices.has(selectedService)) throw new Error('Ungültiger Service');\nif (!message || message.length > 5000) throw new Error('Ungültiger Nachrichtentext');\n\n// Sammelt gefundene sensible Textbereiche zunächst mit Position und Kategorie.\nconst candidates = [];\nconst addCandidate = (type, value, start, reinsertAllowed) => {\n  if (typeof value !== 'string' || !value || !Number.isInteger(start) || start < 0) return;\n  candidates.push({ type, value, start, end: start + value.length, reinsert_allowed: reinsertAllowed });\n};\n// Wiederverwendbare Hilfsfunktion für eindeutig erkennbare Kontaktmuster.\nconst addRegexMatches = (regex, type, reinsertAllowed, valueSelector = (match) => match[0], offsetSelector = () => 0) => {\n  for (const match of message.matchAll(regex)) {\n    const value = valueSelector(match);\n    if (!value) continue;\n    addCandidate(type, value, match.index + offsetSelector(match), reinsertAllowed);\n  }\n};\n// Verhindert Teiltreffer, etwa den Namen `Demo` innerhalb von `Demo-Songs`.\nconst isWordCharacter = (character) => character ? /[\\p{L}\\p{N}_'-]/u.test(character) : false;\nconst addKnownValue = (value, type, reinsertAllowed) => {\n  if (!value) return;\n  const haystack = message.toLocaleLowerCase('de-DE');\n  const needle = value.toLocaleLowerCase('de-DE');\n  let fromIndex = 0;\n  while (fromIndex <= haystack.length - needle.length) {\n    const index = haystack.indexOf(needle, fromIndex);\n    if (index < 0) break;\n    const before = index > 0 ? message[index - 1] : '';\n    const after = index + value.length < message.length ? message[index + value.length] : '';\n    if (!isWordCharacter(before) && !isWordCharacter(after)) addCandidate(type, message.slice(index, index + value.length), index, reinsertAllowed);\n    fromIndex = index + Math.max(value.length, 1);\n  }\n};\n\n// Erkennt Kontaktwerte im Freitext, ohne Links aufzurufen oder Inhalte abzurufen.\naddRegexMatches(/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/giu, 'EMAIL', false);\nfor (const match of message.matchAll(/(?:https?:\\/\\/|www\\.)[^\\s<>\"']+/giu)) {\n  const value = match[0].replace(/[),.;!?]+$/u, '');\n  addCandidate('URL', value, match.index, false);\n}\naddRegexMatches(/\\+?\\d[\\d\\s().\\/-]{6,}\\d/gu, 'PHONE', false);\naddRegexMatches(/(?:^|[\\s(])(@[A-Za-z0-9_][A-Za-z0-9_.-]{1,})/g, 'HANDLE', false, (match) => match[1], (match) => match[0].length - match[1].length);\n// Sucht die bereits bekannten Formularnamen ohne Beachtung der Groß- und Kleinschreibung.\naddKnownValue([firstName, lastName].filter(Boolean).join(' '), 'NAME', true);\naddKnownValue(firstName, 'NAME', true);\naddKnownValue(lastName, 'NAME', true);\naddKnownValue(knownEmail, 'EMAIL', false);\n\n// Längere Treffer gewinnen bei Überlappungen, damit zuerst der vollständige Name ersetzt wird.\ncandidates.sort((left, right) => (right.value.length - left.value.length) || (left.start - right.start));\nconst accepted = [];\nfor (const candidate of candidates) {\n  const overlaps = accepted.some((item) => candidate.start < item.end && item.start < candidate.end);\n  if (!overlaps) accepted.push(candidate);\n}\naccepted.sort((left, right) => left.start - right.start);\n\n// Erstellt pro Kategorie eindeutige Platzhalter und hält die Zuordnung nur im lokalen Lauf.\nconst counters = {};\nconst mapByValue = new Map();\nconst piiMap = [];\nfor (const candidate of accepted) {\n  const key = candidate.type + '\\u0000' + candidate.value.toLocaleLowerCase('de-DE');\n  let entry = mapByValue.get(key);\n  if (!entry) {\n    counters[candidate.type] = (counters[candidate.type] || 0) + 1;\n    entry = {\n      placeholder: '[[PII_' + candidate.type + '_' + counters[candidate.type] + ']]',\n      type: candidate.type.toLowerCase(),\n      original_value: candidate.value,\n      reinsert_allowed: candidate.reinsert_allowed,\n    };\n    mapByValue.set(key, entry);\n    piiMap.push(entry);\n  }\n  candidate.placeholder = entry.placeholder;\n}\n\n// Ersetzt von hinten nach vorne, damit gespeicherte Zeichenpositionen stabil bleiben.\nlet sanitizedMessage = message;\nfor (const candidate of [...accepted].sort((left, right) => right.start - left.start)) {\n  sanitizedMessage = sanitizedMessage.slice(0, candidate.start) + candidate.placeholder + sanitizedMessage.slice(candidate.end);\n}\n\n// Eine zweite Prüfung stellt sicher, dass kein klar erkennbarer Kontaktwert übrig blieb.\nconst privacyReasons = [];\nif (/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/iu.test(sanitizedMessage)) privacyReasons.push('unredacted_email_address');\nif (/(?:https?:\\/\\/|www\\.)\\S+/iu.test(sanitizedMessage)) privacyReasons.push('unredacted_url');\nif (/(?:^|\\s)\\+?\\d[\\d\\s().\\/-]{6,}\\d(?=\\s|[.,;:!?]|$)/u.test(sanitizedMessage)) privacyReasons.push('unredacted_phone_number');\nif (/(?:^|\\s)@[a-z0-9_][a-z0-9_.-]{1,}/iu.test(sanitizedMessage)) privacyReasons.push('unredacted_contact_handle');\nif (/\\b(?:mein name ist|ich heiße|ich heisse|my name is)\\b(?!\\s*\\[\\[PII_NAME_\\d+\\]\\])/iu.test(sanitizedMessage)) privacyReasons.push('unresolved_self_identification');\n\n// Leitet aus eindeutigen Servicebegriffen den in der Nachricht beschriebenen Umfang ab.\n// Fehlt jeder Servicebegriff, bleibt die verpflichtende Formularauswahl ohne Konflikt maßgeblich.\nconst text = sanitizedMessage.toLocaleLowerCase('de-DE').replace(/\\s+/g, ' ');\nconst mentionsMixing = /\\bmixing\\b/.test(text);\nconst mentionsMastering = /\\bmastering\\b/.test(text);\nconst onlyMixing = /\\b(?:nur|ausschließlich|ausschliesslich|lediglich)\\s+(?:das\\s+)?mixing\\b/.test(text);\nconst onlyMastering = /\\b(?:nur|ausschließlich|ausschliesslich|lediglich)\\s+(?:das\\s+)?mastering\\b/.test(text);\nconst noMixing = /\\b(?:kein|keine|keinen)\\s+(?:das\\s+)?mixing\\b/.test(text) || /\\bnicht\\s+(?:das\\s+)?mixing\\b/.test(text);\nconst noMastering = /\\b(?:kein|keine|keinen)\\s+(?:das\\s+)?mastering\\b/.test(text) || /\\bnicht\\s+(?:das\\s+)?mastering\\b/.test(text);\nconst ambiguousPhrase = /\\b(?:unsicher|weiß nicht|weiss nicht|entweder mixing oder mastering|welchen service|welcher service|was ich brauche)\\b/.test(text);\nconst contradictorySignals =\n  (onlyMixing && onlyMastering) ||\n  (noMixing && noMastering) ||\n  (onlyMixing && noMixing) ||\n  (onlyMastering && noMastering);\n\nlet messageService = null;\nif (!contradictorySignals) {\n  if (onlyMixing || (noMastering && !noMixing)) {\n    messageService = 'mixing';\n  } else if (onlyMastering || (noMixing && !noMastering)) {\n    messageService = 'mastering';\n  } else if (mentionsMixing && mentionsMastering) {\n    messageService = 'mixing_and_mastering';\n  } else if (mentionsMixing) {\n    messageService = 'mixing';\n  } else if (mentionsMastering) {\n    messageService = 'mastering';\n  }\n}\n\n// Die feste Matrix hat Vorrang: ein erkannter Umfang muss exakt zur Formularauswahl passen.\nlet ruleClassification = 'clear';\nlet ruleReason = messageService === null ? 'no_service_mentioned' : 'exact_service_match';\nif (ambiguousPhrase || contradictorySignals) {\n  ruleClassification = 'service_ambiguous';\n  ruleReason = contradictorySignals ? 'contradictory_service_signals' : 'explicit_service_ambiguity';\n} else if (messageService !== null && messageService !== selectedService) {\n  ruleClassification = 'service_conflict';\n  ruleReason = 'exact_service_mismatch';\n}\n\n// Gibt interne Prüfdaten und Zuordnung nur an lokale Folge-Nodes weiter.\nreturn [{ json: {\n  inquiry_id: inquiryId,\n  selected_service: selectedService,\n  sanitized_message: sanitizedMessage,\n  pii_map: piiMap,\n  pii_types: [...new Set(piiMap.map((entry) => entry.type))],\n  redaction_status: privacyReasons.length ? 'unresolved' : 'complete',\n  privacy_status: privacyReasons.length ? 'manual_review' : 'safe',\n  privacy_reasons: privacyReasons,\n  rule_classification: ruleClassification,\n  rule_reason: ruleReason,\n  rule_message_service: messageService,\n} }];"
+      },
+      "id": "bd19806c-c8a8-4377-af2c-b96453bf1897",
+      "name": "Datenschutz und Serviceregeln prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2304,
+        1728
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Lässt ausschließlich vollständig bereinigte Nachrichten in den OpenAI-Zweig.\nconst item = $input.first().json;\n// Jeder unsichere Fall endet in der getrennten manuellen Prüfung.\nif (item.privacy_status !== 'safe') return [];\nreturn [{ json: item }];"
+      },
+      "id": "72f36b34-a0ce-4129-a33a-3795b6afdb73",
+      "name": "Nur sichere Nachricht weitergeben",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Baut die minimale OpenAI-Payload aus genau einer lokal freigegebenen Anfrage.\nconst item = $input.first().json;\n// Nur die drei internen Servicewerte dürfen die Datenschutzgrenze passieren.\nconst allowedServices = new Set(['mixing', 'mastering', 'mixing_and_mastering']);\n// Schutzprüfung: Unvollständige Pseudonymisierung stoppt vor dem externen API-Aufruf.\nif (item.privacy_status !== 'safe' || item.redaction_status !== 'complete') throw new Error('Nachricht ist nicht für OpenAI freigegeben');\nif (!allowedServices.has(item.selected_service)) throw new Error('Ungültiger Service für OpenAI');\nif (typeof item.sanitized_message !== 'string' || !item.sanitized_message || item.sanitized_message.length > 5000) throw new Error('Ungültige pseudonymisierte Nachricht für OpenAI');\n// Namen, E-Mail, Downloadlink, interne ID und Platzhalterzuordnung werden bewusst entfernt.\nreturn [{ json: { selected_service: item.selected_service, message: item.sanitized_message } }];"
+      },
+      "id": "be975636-2748-4de7-865c-f8351e2046d3",
+      "name": "OpenAI-Payload erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Leitet ausschließlich lokal markierte Datenschutzfälle in die manuelle Prüfung.\nconst item = $input.first().json;\n// Der Zweig erhält nur die interne ID und keine sensiblen Freitextwerte.\nif (item.privacy_status !== 'manual_review') return [];\nreturn [{ json: { inquiry_id: item.inquiry_id } }];"
+      },
+      "id": "6a840a02-65d9-43c9-b989-49338f83ad75",
+      "name": "Nur Datenschutzfall weitergeben",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.inquiries\nSET\n  status = 'manual_review',\n  review_reason = 'possible_personal_data',\n  updated_at = now()\nWHERE id = $1::uuid\n  AND status = 'evaluating'\nRETURNING id::text AS inquiry_id, status, review_reason;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id] }}"
+        }
+      },
+      "id": "b9870760-f9e7-4baa-af53-40e671388bac",
+      "name": "Datenschutzfall lokal speichern",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2960,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Nur neue Bestätigung auswerten\n\n- Nur das Ergebnis `verified` startet die fachliche Auswertung.\n- Wiederverwendete, abgelaufene, widerrufene oder ungültige Links enden im Antwortzweig.\n- Weitergegeben wird zunächst ausschließlich die interne `inquiry_id`.\n\n**PostgreSQL: Tabelle `inquiries` – SELECT**\n\n- Lädt `inquiry_id`, Serviceauswahl und Nachricht sowie Name und E-Mail-Adresse für die ausschließlich lokale Pseudonymisierung.\n- Die Anfrage muss weiterhin den Status `evaluating` haben.\n- Der folgende lokale Node entfernt die persönlichen Werte wieder, bevor die OpenAI-Payload entsteht.\n- Der Downloadlink wird weiterhin nicht geladen.",
+        "height": 390,
+        "width": 392,
+        "color": 5
+      },
+      "id": "501ce733-b34e-4be2-b4db-766579a00cf8",
+      "name": "Hinweis - Neue Bestätigung auswerten",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Lokale Pseudonymisierung und Serviceprüfung\n\n- Erkennt bekannte Namen und E-Mail-Adresse sowie klare E-Mail-, URL-, Telefon- und Kontakt-Handle-Muster.\n- Ersetzt Treffer durch eindeutige Platzhalter wie `[[PII_NAME_1]]` und hält die Zuordnung nur in diesem lokalen Node.\n- Prüft den bereinigten Text erneut. Nicht sicher bereinigte oder mehrdeutige Fälle erhalten `manual_review` und erreichen OpenAI nicht.\n- Leitet aus eindeutigen Servicenennungen den beschriebenen Umfang ab und vergleicht ihn exakt mit der verpflichtenden Formularauswahl.\n- Jede erkennbare Abweichung gilt als Konflikt, auch ohne `nur` oder `ausschließlich`.\n- Wird in der Nachricht kein Service genannt, bleibt die Formularauswahl ohne Konflikt maßgeblich.\n- Ausdrückliche Unsicherheit oder widersprüchliche Signale führen zu `service_ambiguous`.",
+        "height": 390,
+        "width": 344,
+        "color": 4
+      },
+      "id": "56c13d35-dd15-488a-a698-ed0cc16869d4",
+      "name": "Hinweis - Lokale Datenschutzprüfung",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Pseudonymisierte Übergabe oder lokale Sichtung\n\n**Sicherer Zweig**\n\n- Erzeugt für OpenAI exakt `selected_service` und den pseudonymisierten `message`-Text.\n- Die Platzhalterzuordnung, interne ID, Name, E-Mail-Adresse, Downloadlink, Token und Statusfelder fehlen in der Payload.\n- Der OpenAI-Node darf Platzhalter nur unverändert übernehmen.\n\n**Nicht sicher bereinigter Fall – Tabelle `inquiries` – UPDATE**\n\n- Setzt `status = manual_review` und `review_reason = possible_personal_data`.\n- Es findet kein OpenAI-Aufruf statt.",
+        "height": 430,
+        "width": 380,
+        "color": 5
+      },
+      "id": "1a7fba38-34c1-424c-83a7-baa019a430d6",
+      "name": "Hinweis - OpenAI-Payload und Datenschutzfall",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2864,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "response",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "type": "text",
+              "role": "system",
+              "content": "Du klassifizierst ausschließlich synthetische Demo-Anfragen für Mixing und Mastering. Die Eingabe ist ein JSON-Objekt mit selected_service und einer lokal pseudonymisierten message. selected_service ist immer genau mixing, mastering oder mixing_and_mastering. Platzhalter im Format [[PII_TYP_NUMMER]] müssen zeichengetreu erhalten bleiben, dürfen nicht verändert, teilweise entfernt oder neu erfunden werden. Die Formularauswahl ist die maßgebliche Ausgangsangabe. Wenn die Nachricht keinen Service nennt, ist die Anfrage clear und suggested_service entspricht selected_service. Wenn die Nachricht einen Serviceumfang nennt, muss er exakt zur Auswahl passen: Mixing passt nur zu mixing, Mastering nur zu mastering und die ausdrückliche Nennung beider Services nur zu mixing_and_mastering. Jede Abweichung ist service_conflict, auch ohne Wörter wie nur oder ausschließlich; suggested_service ist dann der aus der Nachricht erkannte, von selected_service abweichende Serviceumfang. Ausdrückliche Unsicherheit oder eine Bitte um Auswahlhilfe ist service_ambiguous. Antworte ausschließlich mit dem verlangten JSON-Objekt. summary und clarification_question müssen professionell auf Deutsch formuliert sein und dürfen weder Markdown noch Links oder neue Kontaktdaten enthalten. Bei clear muss clarification_question null sein. Bei service_conflict oder service_ambiguous muss clarification_question eine konkrete Rückfrage enthalten."
+            },
+            {
+              "type": "text",
+              "role": "user",
+              "content": "={{ JSON.stringify({ selected_service: $json.selected_service, message: $json.message }) }}"
+            }
+          ]
+        },
+        "simplify": true,
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 2000,
+          "store": false,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "verbosity": "low",
+              "name": "mixing_mastering_classification",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"classification\": {\n      \"type\": \"string\",\n      \"enum\": [\"clear\", \"service_conflict\", \"service_ambiguous\"]\n    },\n    \"suggested_service\": {\n      \"type\": [\"string\", \"null\"],\n      \"enum\": [\"mixing\", \"mastering\", \"mixing_and_mastering\", null]\n    },\n    \"summary\": {\n      \"type\": \"string\",\n      \"maxLength\": 600\n    },\n    \"clarification_question\": {\n      \"type\": [\"string\", \"null\"],\n      \"maxLength\": 800\n    }\n  },\n  \"required\": [\"classification\", \"suggested_service\", \"summary\", \"clarification_question\"],\n  \"additionalProperties\": false\n}",
+              "description": "Strukturierte Einordnung einer synthetischen Mixing- oder Mastering-Anfrage.",
+              "strict": true
+            }
+          }
+        }
+      },
+      "id": "2c8bf1ca-0bdb-47c2-bfd5-cb1405ad223e",
+      "name": "OpenAI - Anfrage klassifizieren",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        3216,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Behandelt die OpenAI-Ausgabe grundsätzlich als ungeprüfte externe Eingabe.\nconst input = $input.first().json;\n// Holt die lokale Referenz mit Regeln und erlaubten Platzhaltern; diese Daten waren nie Teil der OpenAI-Payload.\nconst source = $('Datenschutz und Serviceregeln prüfen').first().json;\nconst allowedServices = new Set(['mixing', 'mastering', 'mixing_and_mastering']);\nconst allowedClassifications = new Set(['clear', 'service_conflict', 'service_ambiguous']);\n// Diese lokalen Felder bleiben auch bei einer abgelehnten KI-Ausgabe erhalten.\nconst base = {\n  inquiry_id: source.inquiry_id,\n  selected_service: source.selected_service,\n  rule_classification: source.rule_classification,\n  rule_message_service: source.rule_message_service ?? null,\n};\n// Fehler führen immer zu einem datenarmen, eindeutig markierten Ergebnis ohne KI-Text.\nconst invalid = (validation_error) => [{ json: {\n  ...base,\n  validation_status: 'invalid',\n  validation_error,\n  classification: null,\n  suggested_service: null,\n  summary: null,\n  clarification_question: null,\n} }];\n\n// Prüft zuerst die lokale Referenz und die abgeschlossene Pseudonymisierung.\ntry {\n  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(base.inquiry_id)) return invalid('invalid_inquiry_id');\n  if (!allowedServices.has(base.selected_service)) return invalid('invalid_selected_service');\n  if (!allowedClassifications.has(base.rule_classification)) return invalid('invalid_local_rule');\n  if (source.redaction_status !== 'complete' || source.privacy_status !== 'safe') return invalid('redaction_not_complete');\n\n  // Baut die erlaubte Platzhaltermenge ausschließlich aus der lokalen Zuordnung.\n  const piiMap = Array.isArray(source.pii_map) ? source.pii_map : [];\n  const placeholderPattern = /^\\[\\[PII_[A-Z]+_\\d+\\]\\]$/;\n  const allowedPlaceholders = new Set();\n  for (const entry of piiMap) {\n    if (!entry || typeof entry.placeholder !== 'string' || !placeholderPattern.test(entry.placeholder)) return invalid('invalid_pii_map');\n    if (allowedPlaceholders.has(entry.placeholder)) return invalid('duplicate_pii_placeholder');\n    allowedPlaceholders.add(entry.placeholder);\n  }\n\n  // Leere oder ausdrücklich unvollständige Responses werden eindeutig markiert.\n  const messages = Array.isArray(input.output) ? input.output : [];\n  if (messages.length === 0 || messages.some((message) => message?.status === 'incomplete')) {\n    return invalid('ai_incomplete');\n  }\n\n  // Extrahiert genau einen Textblock aus dem Responses-API-Ausgabeformat.\n  const textParts = [];\n  for (const message of messages) {\n    if (!Array.isArray(message.content)) continue;\n    for (const content of message.content) {\n      if (content && content.type === 'output_text' && content.text !== undefined) textParts.push(content.text);\n    }\n  }\n  if (textParts.length !== 1) return invalid('missing_or_multiple_output_text');\n  const raw = textParts[0];\n  const result = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  if (!result || typeof result !== 'object' || Array.isArray(result)) return invalid('output_not_object');\n\n  // Das strikte Ergebnisobjekt darf weder Felder verlieren noch zusätzliche Felder enthalten.\n  const expectedKeys = ['classification', 'clarification_question', 'suggested_service', 'summary'].sort();\n  const actualKeys = Object.keys(result).sort();\n  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) return invalid('unexpected_output_keys');\n  if (!allowedClassifications.has(result.classification)) return invalid('invalid_classification');\n  if (result.suggested_service !== null && !allowedServices.has(result.suggested_service)) return invalid('invalid_suggested_service');\n  if (typeof result.summary !== 'string' || !result.summary.trim() || result.summary.length > 600) return invalid('invalid_summary');\n  if (result.clarification_question !== null && (typeof result.clarification_question !== 'string' || !result.clarification_question.trim() || result.clarification_question.length > 800)) return invalid('invalid_clarification_question');\n\n  // Prüft Platzhalterintegrität und verbietet neu erzeugte Kontaktwerte oder Markdown.\n  const generatedText = [result.summary, result.clarification_question || ''].join(' ');\n  const emittedPlaceholders = generatedText.match(/\\[\\[PII_[A-Z]+_\\d+\\]\\]/g) || [];\n  if (emittedPlaceholders.some((placeholder) => !allowedPlaceholders.has(placeholder))) return invalid('unknown_pii_placeholder');\n  let textWithoutAllowedPlaceholders = generatedText;\n  for (const placeholder of allowedPlaceholders) textWithoutAllowedPlaceholders = textWithoutAllowedPlaceholders.split(placeholder).join('');\n  if (/\\[\\[\\s*PII_|PII_[A-Z]+_\\d+\\]?\\]?/i.test(textWithoutAllowedPlaceholders)) return invalid('malformed_pii_placeholder');\n  const forbidden = /(?:https?:\\/\\/|www\\.|\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b|(?:^|\\s)@[a-z0-9_][a-z0-9_.-]{1,}|(?:^|\\s)\\+?\\d[\\d\\s().\\/-]{6,}\\d(?=\\s|[.,;:!?]|$)|\\[[^\\]]+\\]\\([^)]+\\)|\\x60|^\\s*#{1,6}\\s|[*_]{2})/im.test(textWithoutAllowedPlaceholders);\n  if (forbidden) return invalid('forbidden_generated_content');\n  // Gleicht die KI-Entscheidung mit den festen lokalen Serviceregeln ab.\n  if (result.classification === 'clear' && (result.suggested_service !== base.selected_service || result.clarification_question !== null)) return invalid('invalid_clear_result');\n  if (result.classification !== 'clear' && typeof result.clarification_question !== 'string') return invalid('missing_clarification_question');\n  if (result.classification === 'service_conflict' && (result.suggested_service === null || result.suggested_service === base.selected_service)) return invalid('invalid_conflict_result');\n  if (base.rule_classification !== 'clear' && result.classification !== base.rule_classification) return invalid('ai_conflicts_with_local_rule');\n  if (\n    base.rule_classification === 'service_conflict' &&\n    base.rule_message_service !== null &&\n    result.suggested_service !== base.rule_message_service\n  ) return invalid('ai_conflicts_with_local_service_scope');\n\n  // Erst nach allen Prüfungen werden die vier erlaubten KI-Felder lokal freigegeben.\n  return [{ json: {\n    ...base,\n    validation_status: 'valid',\n    validation_error: null,\n    classification: result.classification,\n    suggested_service: result.suggested_service,\n    summary: result.summary.trim(),\n    clarification_question: result.clarification_question === null ? null : result.clarification_question.trim(),\n  } }];\n} catch (error) {\n  // Abgeschnittenes oder anderweitig ungültiges JSON wird niemals teilweise übernommen.\n  return invalid('unparseable_ai_output');\n}"
+      },
+      "id": "4d0e5368-6e79-499f-bc1f-5fe4ec71975b",
+      "name": "KI-Ausgabe lokal prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3584,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH updated AS (\n  UPDATE public.inquiries\n  SET\n    status = CASE\n      WHEN $2 <> 'valid' THEN 'manual_review'\n      WHEN $3 = 'clear' THEN 'ready_for_processing'\n      WHEN followup_count >= 2 THEN 'manual_review'\n      ELSE 'awaiting_owner_review'\n    END,\n    confirmed_service = CASE\n      WHEN $2 = 'valid' AND $3 = 'clear' THEN $7\n      ELSE NULL\n    END,\n    service_unklar = NOT ($2 = 'valid' AND $3 = 'clear'),\n    review_reason = CASE\n      WHEN $2 <> 'valid' THEN 'ai_invalid'\n      WHEN $3 = 'clear' THEN NULL\n      WHEN followup_count >= 2 THEN 'followup_limit'\n      ELSE $3\n    END,\n    ai_suggested_service = CASE WHEN $2 = 'valid' THEN NULLIF($4, '') ELSE NULL END,\n    ai_summary = CASE WHEN $2 = 'valid' THEN NULLIF($5, '') ELSE NULL END,\n    updated_at = now()\n  WHERE id = $1::uuid\n    AND status = 'evaluating'\n  RETURNING id, status, review_reason, service_unklar\n), draft AS (\n  INSERT INTO public.reply_reviews (inquiry_id, draft_text)\n  SELECT id, $6::text\n  FROM updated\n  WHERE status = 'awaiting_owner_review'\n    AND NULLIF(btrim($6::text), '') IS NOT NULL\n  ON CONFLICT (inquiry_id) WHERE decision = 'pending'\n  DO UPDATE SET draft_text = EXCLUDED.draft_text\n  RETURNING id\n)\nSELECT\n  updated.id::text AS inquiry_id,\n  updated.status,\n  updated.review_reason,\n  updated.service_unklar,\n  (SELECT id::text FROM draft LIMIT 1) AS reply_review_id\nFROM updated;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id, $json.validation_status, $json.classification, $json.suggested_service, $json.summary, $json.clarification_question, $json.selected_service] }}"
+        }
+      },
+      "id": "5a846f6a-5831-4fdd-849a-f6387a7d97e5",
+      "name": "KI-Auswertung lokal speichern",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4336,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## OpenAI und lokale Ausgabeprüfung\n\n- OpenAI erhält ausschließlich Serviceauswahl und pseudonymisierte Nachricht.\n- Es sind keine Tools, Websuche, Dateien oder Konversationen angebunden; `store` ist deaktiviert.\n- Das strikte JSON-Schema begrenzt die Antwort auf vier Felder.\n- Die lokale Prüfung kontrolliert Schlüssel, Werte, Längen, Kontaktdaten und die exakte Konfliktmatrix erneut.\n- Leere oder als `incomplete` markierte Antworten werden als `ai_incomplete` abgelehnt; das Ausgabelimit beträgt 2.000 Tokens.\n- Ausgegebene Platzhalter müssen exakt aus der lokalen Zuordnung stammen. Veränderte oder erfundene Platzhalter führen zu `ai_invalid`.\n- Eine ungeprüfte KI-Ausgabe wird weder gespeichert noch versendet.",
+        "height": 430,
+        "width": 380,
+        "color": 4
+      },
+      "id": "6ec85ebc-6669-438a-8a1c-c483e797ac1f",
+      "name": "Hinweis - OpenAI und Ausgabeprüfung",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3312,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## PostgreSQL: geprüfte KI-Auswertung speichern\n\n**Vorherige lokale Wiedereinsetzung**\n\n- In der geprüften Zusammenfassung und im Rückfrageentwurf dürfen ausdrücklich erlaubte Namensplatzhalter eingesetzt werden.\n- Die eingesetzten Namen stammen in ihrer kanonischen Schreibweise aus den zuvor aus PostgreSQL geladenen Formularfeldern.\n- E-Mail-, Telefon-, URL- und Handle-Platzhalter führen weiterhin zur manuellen Prüfung.\n\n**Tabelle `inquiries` – UPDATE**\n\n- `clear` setzt `ready_for_processing`; Konflikt oder Unklarheit setzt `awaiting_owner_review`.\n- Ungültige Ausgabe setzt `manual_review` mit `review_reason = ai_invalid`.\n\n**Tabelle `reply_reviews` – INSERT oder UPDATE**\n\n- Nur gültige Konflikte und unklare Fälle erhalten einen bearbeitbaren Rückfrageentwurf.\n- Es wird noch keine E-Mail versendet.",
+        "height": 520,
+        "width": 372,
+        "color": 5
+      },
+      "id": "fde10cf7-b03f-4c41-8fe6-06fc14139ea3",
+      "name": "Hinweis - KI-Auswertung speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4192,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Setzt erst nach vollständiger KI-Prüfung erlaubte Namensplatzhalter lokal wieder ein.\nconst item = $input.first().json;\nif (item.validation_status !== 'valid') {\n  return [{ json: { ...item, rehydration_status: 'not_applicable' } }];\n}\n\n// Die Platzhalterzuordnung und die kanonischen Namen stammen aus lokalen früheren Nodes.\n// `.first()` ist korrekt, weil jeder Workflow-Lauf genau eine Anfrage verarbeitet.\nconst privacySource = $('Datenschutz und Serviceregeln prüfen').first().json;\nconst inquirySource = $('Anfrage für Auswertung laden').first().json;\nconst piiMap = Array.isArray(privacySource.pii_map) ? privacySource.pii_map : [];\n\n// Erstellt die zulässigen Schreibweisen aus den ursprünglichen PostgreSQL-Feldern.\n// Der Vergleich erfolgt kleinschreibungsunabhängig, eingesetzt wird die kanonische Formularschreibweise.\nconst firstName = typeof inquirySource.first_name === 'string' ? inquirySource.first_name.trim() : '';\nconst lastName = typeof inquirySource.last_name === 'string' ? inquirySource.last_name.trim() : '';\nconst fullName = [firstName, lastName].filter(Boolean).join(' ');\nconst canonicalNames = new Map();\nfor (const value of [fullName, firstName, lastName]) {\n  if (value) canonicalNames.set(value.toLocaleLowerCase('de-DE'), value);\n}\n\n// Ein abgelehnter Fall enthält keinen teilweise wiederhergestellten Text.\nconst reject = (validation_error) => [{ json: {\n  ...item,\n  validation_status: 'invalid',\n  validation_error,\n  classification: null,\n  suggested_service: null,\n  summary: null,\n  clarification_question: null,\n  rehydration_status: 'rejected',\n} }];\n\n// Prüft die lokale Zuordnung erneut und verhindert doppelte oder beschädigte Platzhalter.\nconst placeholderPattern = /^\\[\\[PII_[A-Z]+_\\d+\\]\\]$/;\nconst entries = new Map();\nfor (const entry of piiMap) {\n  if (!entry || typeof entry.placeholder !== 'string' || !placeholderPattern.test(entry.placeholder)) {\n    return reject('invalid_pii_map_for_reinsertion');\n  }\n  if (entries.has(entry.placeholder)) return reject('duplicate_pii_placeholder_for_reinsertion');\n  entries.set(entry.placeholder, entry);\n}\n\nlet replacementCount = 0;\nconst restoreText = (text) => {\n  if (text === null) return { ok: true, value: null };\n  if (typeof text !== 'string') return { ok: false, error: 'invalid_text_for_reinsertion' };\n\n  let restored = text;\n  const placeholders = restored.match(/\\[\\[PII_[A-Z]+_\\d+\\]\\]/g) || [];\n  for (const placeholder of placeholders) {\n    const entry = entries.get(placeholder);\n\n    // Nur bekannte NAME-Platzhalter dürfen Originalwerte zurückerhalten.\n    // Kontaktwerte bleiben gesperrt, auch wenn OpenAI ihren Platzhalter wiederholt.\n    if (\n      !entry ||\n      entry.reinsert_allowed !== true ||\n      entry.type !== 'name' ||\n      typeof entry.original_value !== 'string' ||\n      !entry.original_value.trim()\n    ) {\n      return { ok: false, error: 'placeholder_not_allowed_for_reinsertion' };\n    }\n\n    // Verknüpft den erkannten Nachrichtentext mit Vorname, Nachname oder vollständigem Namen aus PostgreSQL.\n    const canonicalValue = canonicalNames.get(entry.original_value.trim().toLocaleLowerCase('de-DE'));\n    if (!canonicalValue) return { ok: false, error: 'placeholder_not_linked_to_known_name' };\n\n    restored = restored.split(placeholder).join(canonicalValue);\n    replacementCount += 1;\n  }\n\n  // Nach der Ersetzung darf kein vollständiger oder beschädigter PII-Platzhalter übrig bleiben.\n  if (/\\[\\[\\s*PII_|PII_[A-Z]+_\\d+\\]?\\]?/i.test(restored)) {\n    return { ok: false, error: 'unresolved_placeholder_after_reinsertion' };\n  }\n  return { ok: true, value: restored };\n};\n\n// Namen werden in beiden geprüften KI-Textfeldern wiederhergestellt.\nconst restoredSummary = restoreText(item.summary);\nif (!restoredSummary.ok) return reject(restoredSummary.error);\nconst restoredQuestion = restoreText(item.clarification_question);\nif (!restoredQuestion.ok) return reject(restoredQuestion.error);\n\nreturn [{ json: {\n  ...item,\n  summary: restoredSummary.value,\n  clarification_question: restoredQuestion.value,\n  rehydration_status: replacementCount > 0 ? 'complete' : 'not_needed',\n} }];"
+      },
+      "id": "27c2e8ed-a2ec-4d5c-8d29-d6cc5748e82c",
+      "name": "Erlaubte Platzhalter lokal einsetzen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3872,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Kontrollierte lokale Wiedereinsetzung\n\n- Läuft erst nach erfolgreicher Schema-, Inhalts- und Platzhalterprüfung.\n- Prüft jeden ausgegebenen Platzhalter erneut gegen die lokale Zuordnung.\n- Verknüpft erlaubte Namensplatzhalter mit Vorname, Nachname oder vollständigem Namen aus `Anfrage für Auswertung laden`.\n- Der Vergleich ignoriert Groß- und Kleinschreibung; eingesetzt wird die kanonische Schreibweise aus PostgreSQL.\n- Ersetzt erlaubte Namen in `summary` und `clarification_question`.\n- E-Mail-, Telefon-, URL- und Handle-Platzhalter oder nicht eindeutige Zuordnungen führen zu `ai_invalid`.\n- Die lokale Zuordnung selbst wird nicht an nachfolgende Nodes weitergegeben.",
+        "height": 430,
+        "width": 380,
+        "color": 4
+      },
+      "id": "19e3f6f7-f26e-4a7d-bb9f-4a94432a4d8a",
+      "name": "Hinweis - Kontrollierte Wiedereinsetzung",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3760,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Lässt ausschließlich einen neu gespeicherten, offenen Eigentümer-Review weiterlaufen.\nconst item = $input.first().json;\nconst uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\n// Klare Anfragen und manuelle Prüffälle benötigen keinen Eigentümer-Freigabelink.\nif (item.status !== 'awaiting_owner_review') return [];\n\n// Ein Token darf nur für die geprüfte Anfrage und den konkret angelegten Review entstehen.\nif (!uuidPattern.test(item.inquiry_id || '')) throw new Error('Ungültige inquiry_id für Eigentümerprüfung');\nif (!uuidPattern.test(item.reply_review_id || '')) throw new Error('Ungültige reply_review_id für Eigentümerprüfung');\n\nreturn [{ json: {\n  inquiry_id: item.inquiry_id,\n  reply_review_id: item.reply_review_id,\n  status: item.status,\n} }];"
+      },
+      "id": "41d8923a-2051-4e2b-b6b0-321f9fd6a101",
+      "name": "Nur Eigentümerprüfung vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4592,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "owner_review_token",
+        "encodingType": "hex",
+        "stringLength": 64
+      },
+      "id": "41d8923a-2051-4e2b-b6b0-321f9fd6a102",
+      "name": "Eigentümertoken erzeugen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.owner_review_token }}",
+        "dataPropertyName": "owner_review_token_hash",
+        "encoding": "hex"
+      },
+      "id": "41d8923a-2051-4e2b-b6b0-321f9fd6a103",
+      "name": "Eigentümertoken hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        5104,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH eligible AS (\n  SELECT\n    review.id AS reply_review_id,\n    review.inquiry_id\n  FROM public.reply_reviews AS review\n  JOIN public.inquiries AS inquiry ON inquiry.id = review.inquiry_id\n  WHERE review.id = $2::uuid\n    AND review.inquiry_id = $1::uuid\n    AND review.decision = 'pending'\n    AND inquiry.status = 'awaiting_owner_review'\n), created_token AS (\n  INSERT INTO public.access_tokens (\n    inquiry_id, reply_review_id, purpose, token_hash, expires_at\n  )\n  SELECT\n    inquiry_id,\n    reply_review_id,\n    'owner_review',\n    $3,\n    now() + interval '24 hours'\n  FROM eligible\n  ON CONFLICT DO NOTHING\n  RETURNING inquiry_id, reply_review_id, expires_at\n), planned_notification AS (\n  INSERT INTO public.outbound_actions (\n    inquiry_id, kind, idempotency_key\n  )\n  SELECT\n    inquiry_id,\n    'owner_notification',\n    'owner_notification:' || reply_review_id::text\n  FROM created_token\n  ON CONFLICT (idempotency_key) DO NOTHING\n  RETURNING inquiry_id\n)\nSELECT\n  created_token.inquiry_id::text AS inquiry_id,\n  created_token.reply_review_id::text AS reply_review_id,\n  created_token.expires_at,\n  EXISTS (SELECT 1 FROM planned_notification) AS owner_notification_planned\nFROM created_token;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id, $json.reply_review_id, $json.owner_review_token_hash] }}"
+        }
+      },
+      "id": "41d8923a-2051-4e2b-b6b0-321f9fd6a104",
+      "name": "Eigentümerprüfung vorbereiten",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5360,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Eigentümerprüfung vorbereiten\n\n- Nur ein Ergebnis mit `status = awaiting_owner_review` und gültiger Review-ID erreicht diesen Zweig.\n- Der 64-stellige Zufallstoken bleibt im lokalen n8n-Lauf; PostgreSQL erhält ausschließlich seinen SHA-256-Hash.\n- Der interne Freigabelink ist 24 Stunden gültig. Die E-Mail und das Formular folgen in den nächsten Schritten.\n\n**Tabelle `reply_reviews` – SELECT**\n\n- Der Review muss zur Anfrage gehören und weiterhin `pending` sein.\n\n**Tabelle `inquiries` – SELECT**\n\n- Die Anfrage muss weiterhin `awaiting_owner_review` sein.\n\n**Tabelle `access_tokens` – INSERT**\n\n- Speichert Zweck `owner_review`, Review-Zuordnung, Hash und Ablaufzeit.\n- Die Datenbank verhindert einen zweiten offenen Token für denselben Review.\n\n**Tabelle `outbound_actions` – INSERT**\n\n- Plant genau eine `owner_notification` mit einem Schlüssel aus der Review-ID.\n- In diesem Schritt wird noch keine E-Mail versendet.",
+        "height": 496,
+        "width": 944,
+        "color": 5
+      },
+      "id": "41d8923a-2051-4e2b-b6b0-321f9fd6a105",
+      "name": "Hinweis - Eigentümerprüfung vorbereiten",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4576,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Hält die interne Empfängeradresse an genau einer sichtbaren Stelle im Workflow.\nconst item = $input.first().json;\n\n// Vor einem Test ausschließlich durch eine eigene Testadresse ersetzen.\n// Der öffentliche Portfolio-Entwurf behält immer diesen künstlichen Platzhalter.\nconst ownerEmail = 'portfolio-owner@example.invalid';\nconst normalizedEmail = ownerEmail.trim().toLowerCase();\nconst emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;\n\n// Ein unveränderter Platzhalter darf keine Versandaktion beanspruchen.\nif (!emailPattern.test(normalizedEmail) || normalizedEmail.endsWith('.invalid')) {\n  throw new Error('Bitte im Node Eigentümeradresse konfigurieren eine eigene Testadresse eintragen');\n}\n\nreturn [{ json: { ...item, owner_email: normalizedEmail } }];"
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b201",
+      "name": "Eigentümeradresse konfigurieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5616,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions AS action\nSET\n  state = 'in_progress',\n  attempt_count = attempt_count + 1,\n  last_attempt_at = now(),\n  last_error_code = NULL\nWHERE action.inquiry_id = $1::uuid\n  AND action.kind = 'owner_notification'\n  AND action.state = 'pending'\n  AND EXISTS (\n    SELECT 1\n    FROM public.access_tokens AS token\n    JOIN public.reply_reviews AS review\n      ON review.id = token.reply_review_id\n     AND review.inquiry_id = token.inquiry_id\n    WHERE token.inquiry_id = action.inquiry_id\n      AND token.reply_review_id = $2::uuid\n      AND token.purpose = 'owner_review'\n      AND token.used_at IS NULL\n      AND token.revoked_at IS NULL\n      AND token.expires_at > now()\n      AND review.decision = 'pending'\n  )\nRETURNING\n  action.inquiry_id::text AS inquiry_id,\n  ($2::uuid)::text AS reply_review_id,\n  action.state;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.inquiry_id, $json.reply_review_id] }}"
+        }
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b202",
+      "name": "Eigentümerbenachrichtigung beanspruchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5872,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Eigentümeradresse konfigurieren').first().json.owner_email }}",
+        "subject": "Demo-Anfrage benötigt Ihre Prüfung",
+        "emailType": "text",
+        "message": "={{ 'Guten Tag,\\n\\neine bestätigte Mixing-/Mastering-Demo-Anfrage benötigt Ihre Prüfung. Über den folgenden lokalen Link können Sie den vorgeschlagenen Rückfragetext ansehen, bearbeiten, freigeben oder ablehnen:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-owner-review?token=' + $('Eigentümertoken erzeugen').first().json.owner_review_token + '\\n\\nDer Link ist 24 Stunden gültig und kann nur einmal für eine Entscheidung verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.\\n\\nBitte verwenden Sie ausschließlich synthetische Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Mixing & Mastering Demo"
+        }
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b203",
+      "name": "Gmail - Eigentümerprüfung senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        6160,
+        1632
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions\nSET\n  state = 'succeeded',\n  completed_at = now(),\n  external_reference = $2,\n  last_error_code = NULL\nWHERE inquiry_id = $1::uuid\n  AND kind = 'owner_notification'\n  AND state = 'in_progress'\nRETURNING inquiry_id::text AS inquiry_id, state, completed_at;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Eigentümerbenachrichtigung beanspruchen').first().json.inquiry_id, $json.id || null] }}"
+        }
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b204",
+      "name": "Eigentümerbenachrichtigung erfolgreich",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        6432,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.outbound_actions\nSET\n  state = 'needs_review',\n  last_error_code = 'owner_notification_gmail_error'\nWHERE inquiry_id = $1::uuid\n  AND kind = 'owner_notification'\n  AND state = 'in_progress'\nRETURNING inquiry_id::text AS inquiry_id, state, last_error_code;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Eigentümerbenachrichtigung beanspruchen').first().json.inquiry_id] }}"
+        }
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b205",
+      "name": "Eigentümerbenachrichtigung zur Prüfung",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        6432,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Interne Eigentümerbenachrichtigung\n\n- Im Code-Node wird vor dem Test eine eigene Testadresse eingetragen.\n- Der Platzhalter `portfolio-owner@example.invalid` stoppt den Lauf vor der Versandbeanspruchung.\n- Die PostgreSQL-Abfrage beansprucht nur eine geplante `owner_notification` mit gültigem, offenem Eigentümer-Token.\n- Gmail erhält eine reine Textnachricht. Der Link enthält ausschließlich den zufälligen Token.\n- Name, Kunden-E-Mail, Nachricht, Serviceangaben, Downloadlink und Datenbank-IDs stehen weder im Link noch in dieser E-Mail.\n\n**Tabelle `outbound_actions` – UPDATE**\n\n- `pending → in_progress` erfolgt nur einmal und erst nach erneuter Token- und Review-Prüfung.\n\n**Tabellen `access_tokens` und `reply_reviews` – SELECT**\n\n- Token muss gültig, unbenutzt und nicht widerrufen sein; der Review muss `pending` sein.",
+        "height": 384,
+        "width": 656,
+        "color": 5
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b206",
+      "name": "Hinweis - Eigentümerbenachrichtigung",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5632,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Ergebnis des Eigentümerversands\n\n**Erfolg – Tabelle `outbound_actions`**\n\n- Aktion wird `succeeded`.\n- Abschlusszeit und Gmail-Nachrichten-ID werden gespeichert.\n\n**Unklarer Fehler – Tabelle `outbound_actions`**\n\n- Aktion wird `needs_review`.\n- Es erfolgt kein automatischer Neuversand.\n- Gespeichert wird nur der technische Code `owner_notification_gmail_error`, kein personenbezogener Fehlertext.",
+        "height": 320,
+        "width": 416,
+        "color": 5
+      },
+      "id": "52e9a34b-3162-4f3c-a7c1-432f0ae7b207",
+      "name": "Hinweis - Eigentümerversand speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        6288,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mixing-mastering-owner-review",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c301",
+      "name": "Eigentümerformular öffnen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        2896
+      ],
+      "webhookId": "63fa45bc-4273-405d-b8d2-54301bf8c311"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Liest den Eigentümer-Token ausschließlich aus dem Query-Parameter des GET-Webhooks.\nconst token = $input.first().json?.query?.token;\n\n// Nur ein 64-stelliger Hexwert wird weitergegeben. Ein ungültiger Link durchläuft\n// denselben Hash- und Datenbankpfad mit einem neutralen Ersatzwert.\nconst owner_review_token = typeof token === 'string' && /^[0-9a-f]{64}$/i.test(token)\n  ? token.toLowerCase()\n  : 'invalid';\n\nreturn [{ json: { owner_review_token } }];"
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c302",
+      "name": "Eigentümertoken aus Link lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.owner_review_token }}",
+        "dataPropertyName": "owner_review_token_hash",
+        "encoding": "hex"
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c303",
+      "name": "Eigentümertoken aus Link hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        592,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS MATERIALIZED (\n  SELECT\n    token.expires_at,\n    token.used_at,\n    token.revoked_at,\n    review.decision,\n    review.draft_text,\n    inquiry.status,\n    inquiry.first_name,\n    inquiry.last_name,\n    inquiry.email,\n    inquiry.selected_service,\n    inquiry.review_reason,\n    inquiry.message,\n    inquiry.download_url,\n    inquiry.ai_summary\n  FROM public.access_tokens AS token\n  JOIN public.reply_reviews AS review\n    ON review.id = token.reply_review_id\n   AND review.inquiry_id = token.inquiry_id\n  JOIN public.inquiries AS inquiry\n    ON inquiry.id = token.inquiry_id\n  WHERE token.token_hash = $1\n    AND token.purpose = 'owner_review'\n), classified AS (\n  SELECT\n    *,\n    CASE\n      WHEN used_at IS NOT NULL THEN 'already_used'\n      WHEN revoked_at IS NOT NULL THEN 'revoked'\n      WHEN expires_at <= now() THEN 'expired'\n      WHEN decision <> 'pending' THEN 'already_decided'\n      WHEN status <> 'awaiting_owner_review' THEN 'unavailable'\n      ELSE 'valid'\n    END AS outcome\n  FROM matched\n)\nSELECT\n  COALESCE(classified.outcome, 'invalid') AS outcome,\n  CASE WHEN classified.outcome = 'valid' THEN classified.first_name END AS first_name,\n  CASE WHEN classified.outcome = 'valid' THEN classified.last_name END AS last_name,\n  CASE WHEN classified.outcome = 'valid' THEN classified.email END AS email,\n  CASE WHEN classified.outcome = 'valid' THEN classified.selected_service END AS selected_service,\n  CASE WHEN classified.outcome = 'valid' THEN classified.review_reason END AS review_reason,\n  CASE WHEN classified.outcome = 'valid' THEN classified.message END AS message,\n  CASE WHEN classified.outcome = 'valid' THEN classified.download_url END AS download_url,\n  CASE WHEN classified.outcome = 'valid' THEN classified.ai_summary END AS ai_summary,\n  CASE WHEN classified.outcome = 'valid' THEN classified.draft_text END AS draft_text,\n  CASE WHEN classified.outcome = 'valid' THEN classified.expires_at END AS expires_at\nFROM (SELECT 1) AS singleton\nLEFT JOIN classified ON true\nLIMIT 1;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.owner_review_token_hash] }}"
+        }
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c304",
+      "name": "Eigentümerformular-Daten laden",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        848,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Erzeugt eine eigenständige, sichere HTML-Seite aus dem lesenden Datenbankergebnis.\nconst data = $input.first().json;\nconst tokenSource = $('Eigentümertoken aus Link lesen').first().json;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\n\n// Jeder dynamische Wert wird vor der HTML-Ausgabe escaped. Dadurch können Nachricht,\n// Namen oder KI-Text keine eigenen HTML-Elemente oder Skripte einschleusen.\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;',\n  '<': '&lt;',\n  '>': '&gt;',\n  '\"': '&quot;',\n  \"'\": '&#39;',\n}[character]));\n\nconst serviceLabels = {\n  mixing: 'Mixing',\n  mastering: 'Mastering',\n  mixing_and_mastering: 'Mixing + Mastering',\n};\nconst reasonLabels = {\n  service_conflict: 'Serviceangabe widerspricht der Auswahl',\n  service_ambiguous: 'Serviceangabe ist nicht eindeutig',\n};\n\n// Das Layout verwendet nur eingebettetes CSS und kein Browser-JavaScript.\nconst page = (title, content) => [\n  '<!doctype html>',\n  '<html lang=\"de\">',\n  '<head>',\n  '<meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>',\n  ':root{color-scheme:light;--ink:#19212c;--muted:#5b6472;--line:#dce2ea;--panel:#ffffff;--bg:#f3f6fa;--accent:#3758d3;--danger:#a52b34}',\n  '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}',\n  'main{width:min(920px,calc(100% - 32px));margin:40px auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:clamp(22px,4vw,42px);box-shadow:0 14px 40px rgba(31,43,68,.08)}',\n  'h1{font-size:clamp(1.55rem,3vw,2.15rem);line-height:1.2;margin:0 0 10px}.intro{color:var(--muted);margin:0 0 28px}.badge{display:inline-block;padding:5px 10px;border-radius:999px;background:#fff3cd;color:#6f5200;font-size:.86rem;font-weight:700;margin-bottom:18px}',\n  '.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 26px}.field{border:1px solid var(--line);border-radius:10px;padding:13px 15px;min-width:0}.field.wide{grid-column:1/-1}.label{display:block;color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}.preserve{white-space:pre-wrap;overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}',\n  'form{border-top:1px solid var(--line);padding-top:26px}label{display:block;font-weight:700;margin-bottom:8px}textarea{width:100%;min-height:220px;resize:vertical;border:1px solid #aeb8c6;border-radius:10px;padding:14px;font:inherit;line-height:1.5;color:var(--ink)}textarea:focus{outline:3px solid rgba(55,88,211,.2);border-color:var(--accent)}.hint{color:var(--muted);font-size:.9rem;margin:7px 0 18px}.actions{display:flex;flex-wrap:wrap;gap:12px}.button{border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer}.approve{background:var(--accent);color:white}.reject{background:#f7e9eb;color:var(--danger)}.notice{border-left:4px solid var(--accent);padding:12px 16px;background:#eef2ff;border-radius:6px}.footer{color:var(--muted);font-size:.86rem;margin:24px 0 0}',\n  '@media(max-width:680px){main{margin:18px auto}.grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.actions{flex-direction:column}.button{width:100%}}',\n  '</style>',\n  '</head>',\n  '<body><main><section class=\"card\">',\n  content,\n  '</section></main></body>',\n  '</html>',\n].join('\\n');\n\nlet response_code = 200;\nlet response_html;\n\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(tokenSource.owner_review_token || '')) {\n  const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');\n  const service = serviceLabels[data.selected_service] || 'Unbekannt';\n  const reason = reasonLabels[data.review_reason] || 'Manuelle Klärung erforderlich';\n  const submitUrl = 'http://localhost:5678/webhook-test/mixing-mastering-owner-review-submit';\n  const content = [\n    '<span class=\"badge\">Interne Portfolio-Prüfung</span>',\n    '<h1>Rückfrage prüfen und bearbeiten</h1>',\n    '<p class=\"intro\">Der Link wurde gültig geprüft. Das Öffnen dieser Seite verändert noch keine Daten.</p>',\n    '<div class=\"grid\">',\n    '<div class=\"field\"><span class=\"label\">Name</span>' + escapeHtml(fullName) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Test-E-Mail</span>' + escapeHtml(data.email) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Ausgewählter Service</span>' + escapeHtml(service) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Prüfgrund</span>' + escapeHtml(reason) + '</div>',\n    '<div class=\"field wide\"><span class=\"label\">Nachricht</span><div class=\"preserve\">' + escapeHtml(data.message) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">Downloadlink als Text</span><div class=\"mono\">' + escapeHtml(data.download_url) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">KI-Zusammenfassung</span><div class=\"preserve\">' + escapeHtml(data.ai_summary) + '</div></div>',\n    '</div>',\n    '<form method=\"post\" action=\"' + submitUrl + '\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(tokenSource.owner_review_token) + '\">',\n    '<label for=\"edited_text\">Rückfragetext</label>',\n    '<textarea id=\"edited_text\" name=\"edited_text\" maxlength=\"2000\" required>' + escapeHtml(data.draft_text) + '</textarea>',\n    '<p class=\"hint\">Maximal 2.000 Zeichen. Bei Freigabe wird später genau der hier abgesendete Text verwendet.</p>',\n    '<div class=\"actions\">',\n    '<button class=\"button approve\" type=\"submit\" name=\"decision\" value=\"approve\">Freigeben und senden</button>',\n    '<button class=\"button reject\" type=\"submit\" name=\"decision\" value=\"reject\" formnovalidate>Ablehnen</button>',\n    '</div>',\n    '</form>',\n    '<p class=\"footer\">Lokale Portfolio-Demo · Der Downloadlink wird nicht geöffnet · Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Eigentümerprüfung', content);\n} else {\n  // Ungültige Zustände zeigen keine Anfragefelder und verraten keine interne ID.\n  const responses = {\n    invalid: [400, 'Ungültiger Prüf-Link', 'Dieser Prüf-Link ist ungültig.'],\n    expired: [410, 'Prüf-Link abgelaufen', 'Dieser Prüf-Link ist abgelaufen.'],\n    revoked: [410, 'Prüf-Link widerrufen', 'Dieser Prüf-Link ist nicht mehr gültig.'],\n    already_used: [409, 'Prüfung bereits abgeschlossen', 'Dieser Prüf-Link wurde bereits für eine Entscheidung verwendet.'],\n    already_decided: [409, 'Prüfung bereits abgeschlossen', 'Für diese Anfrage wurde bereits eine Entscheidung gespeichert.'],\n    unavailable: [409, 'Prüfung nicht verfügbar', 'Diese Anfrage kann mit dem Link derzeit nicht geprüft werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p><p class=\"footer\">Lokale Mixing-&amp;-Mastering-Portfolio-Demo</p>');\n}\n\nreturn [{ json: { outcome, response_code, response_html } }];"
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c305",
+      "name": "Eigentümerformular sicher erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response_html }}",
+        "options": {
+          "responseCode": "={{ $json.response_code }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              },
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              }
+            ]
+          }
+        }
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c306",
+      "name": "Eigentümerformular anzeigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1456,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Eigentümerformular lesend laden\n\n- Der GET-Webhook erhält ausschließlich `?token=...`.\n- Der Code-Node akzeptiert nur 64 Hexzeichen; anschließend wird der Token lokal mit SHA-256 gehasht.\n- PostgreSQL sucht nur nach Zweck `owner_review` und gibt Anfragefelder ausschließlich bei einem gültigen offenen Review zurück.\n- Das Öffnen führt nur `SELECT` aus: `used_at`, Review-Entscheidung und Anfragestatus bleiben unverändert.\n\n**Tabellen `access_tokens`, `reply_reviews` und `inquiries` – SELECT**\n\n- Gültig: unbenutzt, nicht widerrufen, nicht abgelaufen, Review `pending`, Anfrage `awaiting_owner_review`.\n- Andere Ergebnisse: `invalid`, `expired`, `revoked`, `already_used`, `already_decided` oder `unavailable`.\n- Bei allen ungültigen Ergebnissen bleiben Personen- und Anfragedaten leer.",
+        "height": 500,
+        "width": 736,
+        "color": 5
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c307",
+      "name": "Hinweis - Eigentümerformular laden",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Sicheres internes HTML-Formular\n\n- Alle dynamischen Werte werden vor der Ausgabe HTML-escaped.\n- Angezeigt werden synthetischer Name, Test-E-Mail, Serviceauswahl, Prüfgrund, Nachricht, Downloadlink als Text, KI-Zusammenfassung und bearbeitbarer Entwurf.\n- Der Downloadlink wird nicht automatisch geöffnet und nicht als klickbarer Link ausgegeben.\n- Das Formular verwendet kein Browser-JavaScript und sendet an eine vollständige lokale POST-URL, weil n8n HTML in einem geschützten `iframe` darstellt.\n- Im Formular steckt nur der kurzlebige Token als versteckter Bezug; keine Anfrage- oder Review-ID.\n- Sicherheitsheader verhindern Browser-Caching und Referrer-Weitergabe.\n\n**Fortsetzung:** Das Formular sendet an den getrennten POST-Zweig unterhalb. Erst dieser darf den Token verbrauchen und eine Entscheidung speichern.",
+        "height": 500,
+        "width": 752,
+        "color": 5
+      },
+      "id": "63fa45bc-4273-405d-b8d2-54301bf8c308",
+      "name": "Hinweis - Eigentümerformular HTML",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        816,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mixing-mastering-owner-review-submit",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb101",
+      "name": "Eigentümerentscheidung empfangen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        4016
+      ],
+      "webhookId": "720f4761-7bce-41d8-9f87-31f1c79eb111"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Liest ausschließlich die erwarteten Felder des internen POST-Formulars.\nconst body = $input.first().json?.body ?? {};\nconst rawToken = typeof body.token === 'string' ? body.token.trim() : '';\nconst rawDecision = typeof body.decision === 'string' ? body.decision.trim() : '';\nconst editedText = typeof body.edited_text === 'string' ? body.edited_text.trim() : '';\n\n// Die sichtbare Entscheidung ist auf genau zwei Werte begrenzt. Der Rückfragetext\n// ist nur bei Freigabe erforderlich und darf höchstens 2.000 Zeichen lang sein.\nlet input_status = 'valid';\nlet input_error = null;\nif (!/^[0-9a-f]{64}$/i.test(rawToken)) {\n  input_status = 'invalid';\n  input_error = 'invalid_token_format';\n} else if (!['approve', 'reject'].includes(rawDecision)) {\n  input_status = 'invalid';\n  input_error = 'invalid_decision';\n} else if (rawDecision === 'approve' && editedText.length === 0) {\n  input_status = 'invalid';\n  input_error = 'empty_approval_text';\n} else if (editedText.length > 2000) {\n  input_status = 'invalid';\n  input_error = 'approval_text_too_long';\n}\n\n// Ein ungültiger Roh-Token wird durch einen neutralen Wert ersetzt, damit auch\n// Fehlerfälle denselben lokalen Hash- und Datenbankpfad ohne Ausnahme durchlaufen.\nreturn [{\n  json: {\n    owner_review_token: /^[0-9a-f]{64}$/i.test(rawToken) ? rawToken.toLowerCase() : 'invalid',\n    decision: ['approve', 'reject'].includes(rawDecision) ? rawDecision : 'invalid',\n    edited_text: editedText,\n    input_status,\n    input_error,\n  },\n}];"
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb102",
+      "name": "Eigentümerentscheidung prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.owner_review_token }}",
+        "dataPropertyName": "owner_review_token_hash",
+        "encoding": "hex"
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb103",
+      "name": "Eigentümer-POST-Token hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        592,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "type": "randomString",
+        "encodingType": "hex",
+        "stringLength": 64,
+        "dataPropertyName": "customer_followup_token"
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb104",
+      "name": "Kundenergänzungstoken erzeugen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        864,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.customer_followup_token }}",
+        "dataPropertyName": "customer_followup_token_hash",
+        "encoding": "hex"
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb105",
+      "name": "Kundenergänzungstoken hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS MATERIALIZED (\n  SELECT\n    token.id AS token_id,\n    token.inquiry_id,\n    token.reply_review_id,\n    token.expires_at,\n    token.used_at,\n    token.revoked_at,\n    review.decision AS review_decision,\n    inquiry.status AS inquiry_status\n  FROM public.access_tokens AS token\n  JOIN public.reply_reviews AS review\n    ON review.id = token.reply_review_id\n   AND review.inquiry_id = token.inquiry_id\n  JOIN public.inquiries AS inquiry\n    ON inquiry.id = token.inquiry_id\n  WHERE token.token_hash = $1\n    AND token.purpose = 'owner_review'\n), eligible AS (\n  SELECT *\n  FROM matched\n  WHERE $5 = 'valid'\n    AND $2 IN ('approve', 'reject')\n    AND used_at IS NULL\n    AND revoked_at IS NULL\n    AND expires_at > now()\n    AND review_decision = 'pending'\n    AND inquiry_status = 'awaiting_owner_review'\n    AND ($2 = 'reject' OR (btrim($3) <> '' AND char_length($3) <= 2000))\n), consumed AS (\n  UPDATE public.access_tokens AS token\n  SET used_at = now()\n  FROM eligible\n  WHERE token.id = eligible.token_id\n    AND token.used_at IS NULL\n  RETURNING token.inquiry_id, token.reply_review_id\n), decided AS (\n  UPDATE public.reply_reviews AS review\n  SET\n    decision = CASE WHEN $2 = 'approve' THEN 'approved' ELSE 'rejected' END,\n    edited_text = CASE WHEN $2 = 'approve' THEN $3 ELSE NULL END,\n    decided_at = now()\n  FROM consumed\n  WHERE review.id = consumed.reply_review_id\n    AND review.inquiry_id = consumed.inquiry_id\n    AND review.decision = 'pending'\n  RETURNING review.id AS reply_review_id, review.inquiry_id, review.decision\n), rejected_inquiry AS (\n  UPDATE public.inquiries AS inquiry\n  SET status = 'manual_review', updated_at = now()\n  FROM decided\n  WHERE inquiry.id = decided.inquiry_id\n    AND decided.decision = 'rejected'\n    AND inquiry.status = 'awaiting_owner_review'\n  RETURNING inquiry.id\n), followup_token AS (\n  INSERT INTO public.access_tokens (inquiry_id, purpose, token_hash, expires_at)\n  SELECT\n    decided.inquiry_id,\n    'customer_followup',\n    $4,\n    now() + interval '7 days'\n  FROM decided\n  WHERE decided.decision = 'approved'\n  ON CONFLICT DO NOTHING\n  RETURNING inquiry_id, expires_at\n), planned_email AS (\n  INSERT INTO public.outbound_actions (inquiry_id, kind, idempotency_key)\n  SELECT\n    decided.inquiry_id,\n    'clarification_email',\n    'clarification_email:' || decided.reply_review_id::text\n  FROM decided\n  JOIN followup_token ON followup_token.inquiry_id = decided.inquiry_id\n  WHERE decided.decision = 'approved'\n  ON CONFLICT (idempotency_key) DO NOTHING\n  RETURNING inquiry_id\n)\nSELECT\n  CASE\n    WHEN $5 <> 'valid' THEN 'invalid_input'\n    WHEN NOT EXISTS (SELECT 1 FROM matched) THEN 'invalid'\n    WHEN (SELECT used_at IS NOT NULL FROM matched LIMIT 1) THEN 'already_used'\n    WHEN (SELECT revoked_at IS NOT NULL FROM matched LIMIT 1) THEN 'revoked'\n    WHEN (SELECT expires_at <= now() FROM matched LIMIT 1) THEN 'expired'\n    WHEN (SELECT review_decision <> 'pending' FROM matched LIMIT 1) THEN 'already_decided'\n    WHEN (SELECT inquiry_status <> 'awaiting_owner_review' FROM matched LIMIT 1) THEN 'unavailable'\n    WHEN EXISTS (SELECT 1 FROM decided WHERE decision = 'approved') THEN 'approved'\n    WHEN EXISTS (SELECT 1 FROM decided WHERE decision = 'rejected') THEN 'rejected'\n    ELSE 'unavailable'\n  END AS outcome,\n  EXISTS (SELECT 1 FROM planned_email) AS customer_followup_planned,\n  (SELECT expires_at FROM followup_token LIMIT 1) AS customer_followup_expires_at;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Eigentümer-POST-Token hashen').first().json.owner_review_token_hash, $('Eigentümerentscheidung prüfen').first().json.decision, $('Eigentümerentscheidung prüfen').first().json.edited_text, $('Kundenergänzungstoken hashen').first().json.customer_followup_token_hash, $('Eigentümerentscheidung prüfen').first().json.input_status] }}"
+        }
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb106",
+      "name": "Eigentümerentscheidung speichern",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1408,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Wandelt ausschließlich den kontrollierten Datenbankstatus in eine datenfreie HTML-Antwort um.\nconst result = $input.first().json;\nconst outcome = typeof result.outcome === 'string' ? result.outcome : 'unavailable';\n\n// Die Antwort enthält keine Anfragefelder, keine IDs und keinen Roh-Token.\nconst responses = {\n  approved: [200, 'Freigabe gespeichert', 'Der bearbeitete Rückfragetext wurde gespeichert und für den einmaligen Gmail-Versand freigegeben. Das Versandergebnis wird im Workflow protokolliert.'],\n  rejected: [200, 'Rückfrage abgelehnt', 'Die Ablehnung wurde gespeichert. Es wurde keine Nachricht an den Kunden geplant.'],\n  invalid_input: [400, 'Eingabe nicht übernommen', 'Die Formulareingabe ist unvollständig oder ungültig. Es wurden keine Daten geändert.'],\n  invalid: [400, 'Ungültiger Prüf-Link', 'Dieser Prüf-Link ist ungültig. Es wurden keine Daten geändert.'],\n  expired: [410, 'Prüf-Link abgelaufen', 'Dieser Prüf-Link ist abgelaufen. Es wurden keine Daten geändert.'],\n  revoked: [410, 'Prüf-Link widerrufen', 'Dieser Prüf-Link ist nicht mehr gültig. Es wurden keine Daten geändert.'],\n  already_used: [409, 'Prüfung bereits abgeschlossen', 'Dieser Prüf-Link wurde bereits für eine Entscheidung verwendet.'],\n  already_decided: [409, 'Prüfung bereits abgeschlossen', 'Für diese Anfrage wurde bereits eine Entscheidung gespeichert.'],\n  unavailable: [409, 'Prüfung nicht verfügbar', 'Diese Anfrage kann mit dem Link derzeit nicht geprüft werden.'],\n};\nconst [response_code, title, message] = responses[outcome] || responses.unavailable;\n\n// Statisches HTML reicht aus, weil alle variablen Texte aus der obigen festen Liste stammen.\nconst response_html = [\n  '<!doctype html>',\n  '<html lang=\"de\"><head><meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + title + '</title>',\n  '<style>',\n  ':root{color-scheme:light;--ink:#19212c;--muted:#5b6472;--line:#dce2ea;--panel:#fff;--bg:#f3f6fa;--accent:#3758d3}',\n  '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}',\n  'main{width:min(680px,calc(100% - 32px));margin:40px auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:clamp(22px,5vw,42px);box-shadow:0 14px 40px rgba(31,43,68,.08)}',\n  'h1{font-size:clamp(1.55rem,3vw,2.05rem);line-height:1.2;margin:0 0 14px}.notice{border-left:4px solid var(--accent);padding:12px 16px;background:#eef2ff;border-radius:6px}.footer{color:var(--muted);font-size:.86rem;margin:24px 0 0}',\n  '</style></head><body><main><section class=\"card\">',\n  '<h1>' + title + '</h1><p class=\"notice\">' + message + '</p>',\n  '<p class=\"footer\">Lokale Mixing-&amp;-Mastering-Portfolio-Demo</p>',\n  '</section></main></body></html>',\n].join('\\n');\n\nreturn [{ json: { outcome, response_code, response_html } }];"
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb107",
+      "name": "Entscheidungsantwort sicher erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response_html }}",
+        "options": {
+          "responseCode": "={{ $json.response_code }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              },
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              }
+            ]
+          }
+        }
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb108",
+      "name": "Entscheidungsantwort anzeigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1984,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## POST-Eingabe kontrollieren\n\n- Der Webhook akzeptiert ausschließlich die Formularfelder `token`, `decision` und `edited_text`.\n- `decision` darf nur `approve` oder `reject` sein.\n- Bei Freigabe ist ein getrimmter Text mit höchstens 2.000 Zeichen Pflicht.\n- Der Eigentümer-Token muss aus genau 64 Hexzeichen bestehen und wird vor PostgreSQL lokal mit SHA-256 gehasht.\n- Für den späteren Kundenlink wird ein eigener zufälliger Token erzeugt; PostgreSQL erhält wiederum nur dessen Hash.\n\nUngültige Eingaben werden kontrolliert beantwortet und dürfen keine Daten ändern.",
+        "height": 432,
+        "width": 736,
+        "color": 5
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb109",
+      "name": "Hinweis - Eigentümerentscheidung prüfen",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Entscheidung atomar speichern\n\n**Tabelle `access_tokens` – SELECT, UPDATE, INSERT**\n- Der `owner_review`-Token muss unbenutzt, nicht widerrufen und nicht abgelaufen sein; bei Erfolg wird `used_at` gesetzt.\n- Nur bei Freigabe entsteht ein sieben Tage gültiger `customer_followup`-Token-Hash.\n\n**Tabelle `reply_reviews` – UPDATE**\n- `approve` speichert `approved`, den bearbeiteten Text und `decided_at`.\n- `reject` speichert `rejected`, keinen Endtext und `decided_at`.\n\n**Tabelle `inquiries` – UPDATE nur bei Ablehnung**\n- Ablehnung verschiebt die Anfrage nach `manual_review`.\n- Freigabe bleibt bis zum bestätigten Gmail-Versand in `awaiting_owner_review`.\n\n**Tabelle `outbound_actions` – INSERT nur bei Freigabe**\n- Genau eine `clarification_email` wird mit eindeutigem Aktionsschlüssel als `pending` geplant.\n- Wiederholtes oder paralleles Absenden kann keine zweite Entscheidung und keine zweite Aktion erzeugen.",
+        "height": 560,
+        "width": 944,
+        "color": 5
+      },
+      "id": "720f4761-7bce-41d8-9f87-31f1c79eb110",
+      "name": "Hinweis - Entscheidung atomar speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        800,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Zweig 1 – Anfrage erfassen\n\n**Start:** `Anfrageformular`\n\nFormulardaten prüfen und in PostgreSQL speichern, E-Mail-Bestätigung vorbereiten und den Bestätigungslink an die eigene Testadresse senden.\n\n**Ergebniswege:** Versand erfolgreich oder Versand zur manuellen Prüfung.",
+        "height": 1600,
+        "width": 3088,
+        "color": 7
+      },
+      "id": "82b740cf-cdfa-47cf-a50c-2dc5d720b101",
+      "name": "Zweig 1 - Anfrage erfassen",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        144,
+        -448
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Zweig 2 – E-Mail bestätigen und Anfrage auswerten\n\n**Start:** `E-Mail bestätigen` – GET-Webhook aus dem Bestätigungslink\n\nToken einmalig verbuchen, Anfrage lokal auf Datenschutz und Serviceregeln prüfen, gegebenenfalls OpenAI klassifizieren lassen und das Ergebnis speichern.\n\n**Ergebniswege:** klare Anfrage bleibt `ready_for_processing`; Klärungsfall erzeugt Eigentümerprüfung und Eigentümerbenachrichtigung; Datenschutz- oder Versandproblem geht zur manuellen Prüfung.",
+        "height": 1408,
+        "width": 6960,
+        "color": 7
+      },
+      "id": "82b740cf-cdfa-47cf-a50c-2dc5d720b102",
+      "name": "Zweig 2 - E-Mail bestätigen und auswerten",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Zweig 3 – Eigentümerprüfung öffnen (GET)\n\n**Start:** `Eigentümerformular öffnen`\n\nEigentümer-Token nur lesend prüfen und das interne Formular anzeigen. Dieser Zweig verbraucht den Token nicht und speichert keine Entscheidung.",
+        "height": 1000,
+        "width": 1840,
+        "color": 7
+      },
+      "id": "82b740cf-cdfa-47cf-a50c-2dc5d720b103",
+      "name": "Zweig 3 - Eigentümerprüfung öffnen GET",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        16,
+        2688
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Zweig 4 – Eigentümerentscheidung absenden (POST)\n\n**Start:** `Eigentümerentscheidung empfangen`\n\nBearbeiteten Text und Entscheidung erneut prüfen, Eigentümer-Token einmalig verbrauchen und Freigabe oder Ablehnung atomar speichern.\n\n**Ergebniswege:** `approved` startet den einmaligen Gmail-Versand und setzt bei Erfolg `awaiting_customer`; `rejected` setzt `manual_review`; wiederholtes Absenden ergibt `already_used`.",
+        "height": 1232,
+        "width": 3504,
+        "color": 7
+      },
+      "id": "82b740cf-cdfa-47cf-a50c-2dc5d720b104",
+      "name": "Zweig 4 - Eigentümerentscheidung absenden POST",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        3760
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Lässt ausschließlich eine gerade erfolgreich gespeicherte Freigabe zum Kundenversand durch.\nconst result = $input.first().json;\n\n// Ablehnung, ungültige oder wiederholte Entscheidungen sowie eine fehlende\n// Versandplanung enden hier, ohne Gmail oder eine Versandaktion zu berühren.\nif (result.outcome !== 'approved' || result.customer_followup_planned !== true) {\n  return [];\n}\n\nreturn [{ json: {\n  outcome: result.outcome,\n  customer_followup_planned: true,\n} }];"
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db201",
+      "name": "Nur freigegebene Rückfrage versenden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH eligible AS MATERIALIZED (\n  SELECT\n    action.id AS action_id,\n    action.inquiry_id,\n    review.id AS reply_review_id,\n    inquiry.email,\n    review.edited_text\n  FROM public.outbound_actions AS action\n  JOIN public.access_tokens AS followup_token\n    ON followup_token.inquiry_id = action.inquiry_id\n   AND followup_token.purpose = 'customer_followup'\n   AND followup_token.token_hash = $1\n  JOIN public.access_tokens AS owner_token\n    ON owner_token.inquiry_id = action.inquiry_id\n   AND owner_token.purpose = 'owner_review'\n   AND owner_token.token_hash = $2\n  JOIN public.reply_reviews AS review\n    ON review.id = owner_token.reply_review_id\n   AND review.inquiry_id = owner_token.inquiry_id\n  JOIN public.inquiries AS inquiry\n    ON inquiry.id = action.inquiry_id\n  WHERE action.kind = 'clarification_email'\n    AND action.idempotency_key = 'clarification_email:' || review.id::text\n    AND action.state = 'pending'\n    AND followup_token.used_at IS NULL\n    AND followup_token.revoked_at IS NULL\n    AND followup_token.expires_at > now()\n    AND owner_token.used_at IS NOT NULL\n    AND review.decision = 'approved'\n    AND btrim(review.edited_text) <> ''\n    AND inquiry.status = 'awaiting_owner_review'\n), claimed AS (\n  UPDATE public.outbound_actions AS action\n  SET\n    state = 'in_progress',\n    attempt_count = attempt_count + 1,\n    last_attempt_at = now(),\n    last_error_code = NULL\n  FROM eligible\n  WHERE action.id = eligible.action_id\n    AND action.state = 'pending'\n  RETURNING action.inquiry_id\n)\nSELECT\n  eligible.inquiry_id::text AS inquiry_id,\n  eligible.reply_review_id::text AS reply_review_id,\n  eligible.email,\n  eligible.edited_text,\n  'in_progress'::text AS state\nFROM eligible\nJOIN claimed ON claimed.inquiry_id = eligible.inquiry_id;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Kundenergänzungstoken hashen').first().json.customer_followup_token_hash, $('Eigentümer-POST-Token hashen').first().json.owner_review_token_hash] }}"
+        }
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db202",
+      "name": "Kundenrückfrage beanspruchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2608,
+        4016
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Kundenrückfrage beanspruchen').first().json.email }}",
+        "subject": "Bitte ergänzen Sie Ihre Mixing-/Mastering-Anfrage",
+        "emailType": "text",
+        "message": "={{ 'Guten Tag,\\n\\n' + $('Kundenrückfrage beanspruchen').first().json.edited_text + '\\n\\nBitte ergänzen Sie die Angaben zu Ihrer Demo-Anfrage über den folgenden Link:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-customer-followup?token=' + $('Kundenergänzungstoken erzeugen').first().json.customer_followup_token + '\\n\\nDer Link ist sieben Tage gültig und kann nur einmal verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.\\n\\nBitte verwenden Sie ausschließlich synthetische Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Mixing & Mastering Demo"
+        }
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db203",
+      "name": "Gmail - Kundenrückfrage senden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        4016
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH marked_action AS (\n  UPDATE public.outbound_actions AS action\n  SET\n    state = 'succeeded',\n    completed_at = now(),\n    external_reference = $2,\n    last_error_code = NULL\n  WHERE action.inquiry_id = $1::uuid\n    AND action.kind = 'clarification_email'\n    AND action.state = 'in_progress'\n    AND EXISTS (\n      SELECT 1\n      FROM public.inquiries AS inquiry\n      WHERE inquiry.id = action.inquiry_id\n        AND inquiry.status = 'awaiting_owner_review'\n    )\n  RETURNING action.inquiry_id\n), updated_inquiry AS (\n  UPDATE public.inquiries AS inquiry\n  SET status = 'awaiting_customer', updated_at = now()\n  FROM marked_action\n  WHERE inquiry.id = marked_action.inquiry_id\n    AND inquiry.status = 'awaiting_owner_review'\n  RETURNING inquiry.id, inquiry.status\n)\nSELECT\n  updated_inquiry.id::text AS inquiry_id,\n  'succeeded'::text AS action_state,\n  updated_inquiry.status AS inquiry_status\nFROM updated_inquiry;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Kundenrückfrage beanspruchen').first().json.inquiry_id, $json.id || null] }}"
+        }
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db204",
+      "name": "Kundenrückfrage erfolgreich",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3168,
+        3936
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH marked_action AS (\n  UPDATE public.outbound_actions AS action\n  SET\n    state = 'needs_review',\n    last_error_code = 'clarification_email_gmail_error'\n  WHERE action.inquiry_id = $1::uuid\n    AND action.kind = 'clarification_email'\n    AND action.state = 'in_progress'\n  RETURNING action.inquiry_id\n), updated_inquiry AS (\n  UPDATE public.inquiries AS inquiry\n  SET status = 'manual_review', updated_at = now()\n  FROM marked_action\n  WHERE inquiry.id = marked_action.inquiry_id\n    AND inquiry.status = 'awaiting_owner_review'\n  RETURNING inquiry.id, inquiry.status\n)\nSELECT\n  updated_inquiry.id::text AS inquiry_id,\n  'needs_review'::text AS action_state,\n  updated_inquiry.status AS inquiry_status,\n  'clarification_email_gmail_error'::text AS last_error_code\nFROM updated_inquiry;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$('Kundenrückfrage beanspruchen').first().json.inquiry_id] }}"
+        }
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db205",
+      "name": "Kundenrückfrage zur Prüfung",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3168,
+        4144
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Freigegebene Kundenrückfrage beanspruchen\n\n- Nur das Ergebnis `approved` mit neu geplanter Kundenaktion erreicht diesen Pfad.\n- PostgreSQL verknüpft den verbrauchten `owner_review`-Token, den gültigen `customer_followup`-Token, den freigegebenen Review und dieselbe Anfrage.\n\n**Tabelle `outbound_actions` – UPDATE**\n- Genau eine `clarification_email` darf von `pending` nach `in_progress` wechseln.\n- `attempt_count` und `last_attempt_at` dokumentieren den Versandversuch.\n\n**Tabellen `access_tokens`, `reply_reviews` und `inquiries` – SELECT**\n- Folgetoken: unbenutzt, nicht widerrufen und nicht abgelaufen.\n- Review: `approved` mit nicht leerem `edited_text`.\n- Anfrage: weiterhin `awaiting_owner_review`.\n\nNur die Test-E-Mail-Adresse und der freigegebene Endtext werden an Gmail weitergegeben.",
+        "height": 536,
+        "width": 752,
+        "color": 5
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db206",
+      "name": "Hinweis - Kundenrückfrage beanspruchen",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1776,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Kundenversand und Ergebnis speichern\n\n**Gmail**\n- Sendet den bearbeiteten Rückfragetext und den lokalen Ergänzungslink als Klartext ausschließlich an die gespeicherte Testadresse.\n- Der Link enthält nur den sieben Tage gültigen Roh-Token; PostgreSQL kennt nur dessen SHA-256-Hash.\n\n**Tabellen `outbound_actions` und `inquiries` – UPDATE**\n- Gmail-Erfolg: Aktion `succeeded`, Abschlusszeit und Gmail-Nachrichten-ID; Anfrage `awaiting_customer`.\n- Unklarer Gmail-Ausgang: Aktion `needs_review` mit `clarification_email_gmail_error`; Anfrage `manual_review`.\n- Es gibt keinen automatischen Neuversand. Dadurch kann ein unklarer Gmail-Ausgang keine doppelte Kundenmail erzeugen.",
+        "height": 504,
+        "width": 752,
+        "color": 5
+      },
+      "id": "931d3d9f-e371-4f15-8a51-e14f684db207",
+      "name": "Hinweis - Kundenversand speichern",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2560,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mixing-mastering-customer-followup",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1001",
+      "name": "Kundenergänzung öffnen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        144,
+        5216
+      ],
+      "webhookId": "950a5a2b-34a4-4a43-b624-763c90cb1011"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Liest nur den Token aus dem GET-Link. Ungültige Eingaben erhalten einen\n// neutralen Wert und durchlaufen denselben Hash- und Datenbankpfad.\nconst token = $input.first().json?.query?.token;\nconst customer_followup_token = typeof token === 'string' && /^[0-9a-f]{64}$/i.test(token)\n  ? token.toLowerCase()\n  : 'invalid';\nreturn [{ json: { customer_followup_token } }];"
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1002",
+      "name": "Kundentoken aus Link lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.customer_followup_token }}",
+        "dataPropertyName": "customer_followup_token_hash",
+        "encoding": "hex"
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1003",
+      "name": "Kundentoken aus Link hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        656,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS MATERIALIZED (\n  SELECT\n    token.expires_at,\n    token.used_at,\n    token.revoked_at,\n    inquiry.status,\n    inquiry.selected_service\n  FROM public.access_tokens AS token\n  JOIN public.inquiries AS inquiry ON inquiry.id = token.inquiry_id\n  WHERE token.token_hash = $1\n    AND token.purpose = 'customer_followup'\n), classified AS (\n  SELECT *,\n    CASE\n      WHEN used_at IS NOT NULL THEN 'already_used'\n      WHEN revoked_at IS NOT NULL THEN 'revoked'\n      WHEN expires_at <= now() THEN 'expired'\n      WHEN status <> 'awaiting_customer' THEN 'unavailable'\n      ELSE 'valid'\n    END AS outcome\n  FROM matched\n)\nSELECT\n  COALESCE(classified.outcome, 'invalid') AS outcome,\n  CASE WHEN classified.outcome = 'valid' THEN classified.selected_service END AS selected_service,\n  CASE WHEN classified.outcome = 'valid' THEN classified.expires_at END AS expires_at\nFROM (SELECT 1) AS singleton\nLEFT JOIN classified ON true\nLIMIT 1;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.customer_followup_token_hash] }}"
+        }
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1004",
+      "name": "Kundenergänzung lesend prüfen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        912,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Rendert nur freigegebene, HTML-escaped Werte. Eine sichtbare Anfrage-ID\n// ist keine Berechtigung; das Formular sendet ausschließlich den Einmal-Token.\nconst data = $input.first().json;\nconst token = $('Kundentoken aus Link lesen').first().json.customer_followup_token;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;',\n}[character]));\nconst labels = { mixing: 'Mixing', mastering: 'Mastering', mixing_and_mastering: 'Mixing + Mastering' };\nconst page = (title, content) => [\n  '<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#19212c;font:16px/1.55 system-ui,sans-serif}main{width:min(720px,calc(100% - 32px));margin:38px auto;background:white;border:1px solid #dce2ea;border-radius:16px;padding:clamp(22px,4vw,40px)}h1{line-height:1.2}label{display:block;font-weight:700;margin:20px 0 8px}select,textarea{width:100%;padding:12px;border:1px solid #aeb8c6;border-radius:9px;font:inherit}textarea{min-height:145px;resize:vertical}button{margin-top:22px;background:#3758d3;color:white;border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700}.hint{color:#5b6472}.notice{border-left:4px solid #3758d3;padding:12px 16px;background:#eef2ff}</style>',\n  '</head><body><main>', content, '</main></body></html>',\n].join('\\n');\nlet response_code = 200;\nlet response_html;\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(token || '')) {\n  // Die obligatorische Auswahl ist bewusst nicht vorgewählt: der Kunde muss\n  // seinen gewünschten Umfang ausdrücklich bestätigen oder korrigieren.\n  const options = Object.entries(labels).map(([value, label]) =>\n    '<option value=\"' + value + '\">' + escapeHtml(label) + '</option>').join('');\n  const content = [\n    '<h1>Angaben zur Anfrage ergänzen</h1>',\n    '<p class=\"hint\">Bitte verwende für diese lokale Demo nur künstliche Angaben. Das Öffnen dieses Formulars verändert die Anfrage nicht.</p>',\n    '<p>Ursprünglich ausgewählt: <strong>' + escapeHtml(labels[data.selected_service] || 'Unbekannt') + '</strong></p>',\n    '<form method=\"post\" action=\"http://localhost:5678/webhook-test/mixing-mastering-customer-followup-submit\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(token) + '\">',\n    '<label for=\"service_selection\">Welchen Service wünschst du?</label>',\n    '<select id=\"service_selection\" name=\"service_selection\" required><option value=\"\" selected disabled>Bitte auswählen</option>' + options + '</select>',\n    '<label for=\"message\">Zusätzliche Nachricht (optional)</label>',\n    '<textarea id=\"message\" name=\"message\" maxlength=\"2000\"></textarea>',\n    '<p class=\"hint\">Die Serviceauswahl ist verpflichtend; die Nachricht ist optional. Der Link kann nur einmal verwendet werden.</p>',\n    '<button type=\"submit\">Ergänzung absenden</button></form>',\n    '<p class=\"hint\">Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Anfrage ergänzen', content);\n} else {\n  // Fehlseiten enthalten weder Serviceauswahl noch andere Anfragedaten.\n  const responses = {\n    invalid: [400, 'Ungültiger Ergänzungslink', 'Dieser Link ist ungültig.'],\n    expired: [410, 'Ergänzungslink abgelaufen', 'Dieser Link ist abgelaufen.'],\n    revoked: [410, 'Ergänzungslink widerrufen', 'Dieser Link ist nicht mehr gültig.'],\n    already_used: [409, 'Ergänzung bereits gesendet', 'Dieser Link wurde bereits verwendet.'],\n    unavailable: [409, 'Ergänzung nicht verfügbar', 'Die Anfrage kann mit diesem Link derzeit nicht ergänzt werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p>');\n}\nreturn [{ json: { outcome, response_code, response_html } }];"
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1005",
+      "name": "Kundenergänzung sicher darstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response_html }}",
+        "options": {
+          "responseCode": "={{ $json.response_code }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              },
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              }
+            ]
+          }
+        }
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1006",
+      "name": "Kundenergänzung anzeigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1504,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zweig 5 – Kundenergänzung öffnen (GET)\n\nLädt nur den sieben Tage gültigen `customer_followup`-Token. PostgreSQL prüft Hash, Zweck, Ablauf, Verwendung und `awaiting_customer` ausschließlich lesend. Anfragefelder werden nur im gültigen Fall zurückgegeben. Das Öffnen verbraucht keinen Token.",
+        "height": 248,
+        "width": 720,
+        "color": 5
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1007",
+      "name": "Zweig 5 - Kundenergänzung öffnen GET",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        112,
+        5440
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Kundenformular\n\nDrei verpflichtende Serviceoptionen und eine optionale Nachricht. Alle dynamischen Texte werden HTML-escaped; der Downloadlink wird nicht angezeigt oder geöffnet. Das Formular sendet nur den Token als Bezug an einen separaten POST-Webhook. Speicherung und erneute Prüfung erfolgen in Zweig 6.",
+        "height": 248,
+        "width": 720,
+        "color": 5
+      },
+      "id": "950a5a2b-34a4-4a43-b624-763c90cb1008",
+      "name": "Hinweis - Kundenergänzungsformular",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        5440
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mixing-mastering-customer-followup-submit",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211001",
+      "name": "Kundenergänzung empfangen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        144,
+        5968
+      ],
+      "webhookId": "bf127f42-c87c-4d61-94a5-f75cf6211011"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Prüft ausschließlich Tokenformat, verpflichtende Serviceauswahl und\n// optionalen Nachrichtentext. Fehlerhafte Werte erreichen keine Mutation.\nconst body = $input.first().json?.body || {};\nconst allowed = new Set(['mixing', 'mastering', 'mixing_and_mastering']);\nconst token = typeof body.token === 'string' && /^[0-9a-f]{64}$/i.test(body.token)\n  ? body.token.toLowerCase()\n  : 'invalid';\nconst service = typeof body.service_selection === 'string' ? body.service_selection : '';\nconst message = typeof body.message === 'string' ? body.message.trim() : '';\nconst input_valid = allowed.has(service) && message.length <= 2000 &&\n  (body.message === undefined || typeof body.message === 'string');\nreturn [{ json: {\n  customer_followup_token: token,\n  service_selection: input_valid ? service : '',\n  message: input_valid ? message : '',\n  input_valid,\n} }];"
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211002",
+      "name": "Kundenergänzung prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        5968
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ $json.customer_followup_token }}",
+        "dataPropertyName": "customer_followup_token_hash",
+        "encoding": "hex"
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211003",
+      "name": "Eingehenden Kundentoken hashen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        656,
+        5968
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS MATERIALIZED (\n  SELECT\n    token.id AS token_id,\n    token.inquiry_id,\n    token.used_at,\n    token.revoked_at,\n    token.expires_at,\n    inquiry.status,\n    inquiry.followup_count\n  FROM public.access_tokens AS token\n  JOIN public.inquiries AS inquiry ON inquiry.id = token.inquiry_id\n  WHERE token.token_hash = $1\n    AND token.purpose = 'customer_followup'\n), eligible AS MATERIALIZED (\n  SELECT token.id AS token_id, inquiry.id AS inquiry_id\n  FROM public.access_tokens AS token\n  JOIN public.inquiries AS inquiry ON inquiry.id = token.inquiry_id\n  JOIN matched ON matched.token_id = token.id\n  WHERE $4::boolean\n    AND token.used_at IS NULL\n    AND token.revoked_at IS NULL\n    AND token.expires_at > now()\n    AND inquiry.status = 'awaiting_customer'\n    AND inquiry.followup_count < 2\n  FOR UPDATE OF token, inquiry\n), consumed AS (\n  UPDATE public.access_tokens AS token\n  SET used_at = now()\n  FROM eligible\n  WHERE token.id = eligible.token_id\n    AND token.used_at IS NULL\n  RETURNING token.id AS token_id, token.inquiry_id\n), recorded AS (\n  INSERT INTO public.inquiry_updates (inquiry_id, access_token_id, service_selection, message)\n  SELECT consumed.inquiry_id, consumed.token_id, $2::text, NULLIF($3::text, '')\n  FROM consumed\n  RETURNING inquiry_id\n), advanced AS (\n  UPDATE public.inquiries AS inquiry\n  SET\n    status = CASE WHEN $3::text = '' THEN 'ready_for_processing' ELSE 'evaluating' END,\n    confirmed_service = CASE WHEN $3::text = '' THEN $2::text ELSE NULL END,\n    service_unklar = ($3::text <> ''),\n    review_reason = NULL,\n    followup_count = inquiry.followup_count + 1,\n    updated_at = now()\n  FROM recorded\n  WHERE inquiry.id = recorded.inquiry_id\n    AND inquiry.status = 'awaiting_customer'\n  RETURNING inquiry.id, inquiry.status\n)\nSELECT\n  CASE\n    WHEN EXISTS (SELECT 1 FROM advanced) THEN 'accepted'\n    WHEN NOT $4::boolean THEN 'invalid_input'\n    WHEN NOT EXISTS (SELECT 1 FROM matched) THEN 'invalid'\n    WHEN (SELECT used_at IS NOT NULL FROM matched LIMIT 1) THEN 'already_used'\n    WHEN (SELECT revoked_at IS NOT NULL FROM matched LIMIT 1) THEN 'revoked'\n    WHEN (SELECT expires_at <= now() FROM matched LIMIT 1) THEN 'expired'\n    ELSE 'unavailable'\n  END AS outcome,\n  (SELECT id::text FROM advanced LIMIT 1) AS inquiry_id,\n  (SELECT status FROM advanced LIMIT 1) AS inquiry_status,\n  (SELECT status = 'evaluating' FROM advanced LIMIT 1) AS needs_evaluation;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.customer_followup_token_hash, $('Kundenergänzung prüfen').first().json.service_selection, $('Kundenergänzung prüfen').first().json.message, $('Kundenergänzung prüfen').first().json.input_valid] }}"
+        }
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211004",
+      "name": "Kundenergänzung einmalig speichern",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        912,
+        5968
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Formuliert nur datenarme Ergebnisse; weder Token noch Anfragetext\n// erscheinen in der Antwort. Die fachliche Auswertung läuft getrennt weiter.\nconst outcome = $input.first().json.outcome;\nconst responses = {\n  accepted: [200, 'Ergänzung gespeichert', 'Danke. Deine Ergänzung wurde für diese lokale Demo übernommen.'],\n  invalid_input: [400, 'Angaben prüfen', 'Bitte wähle einen Service und verwende höchstens 2.000 Zeichen für die Nachricht.'],\n  invalid: [400, 'Ungültiger Ergänzungslink', 'Dieser Link ist ungültig.'],\n  expired: [410, 'Ergänzungslink abgelaufen', 'Dieser Link ist abgelaufen.'],\n  revoked: [410, 'Ergänzungslink widerrufen', 'Dieser Link ist nicht mehr gültig.'],\n  already_used: [409, 'Ergänzung bereits gesendet', 'Dieser Link wurde bereits verwendet.'],\n  unavailable: [409, 'Ergänzung nicht verfügbar', 'Diese Anfrage kann mit dem Link derzeit nicht ergänzt werden.'],\n};\nconst [response_code, title, message] = responses[outcome] || responses.unavailable;\nconst response_html = '<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>' + title + '</title><style>body{margin:0;background:#f3f6fa;color:#19212c;font:16px/1.55 system-ui,sans-serif}main{width:min(720px,calc(100% - 32px));margin:38px auto;background:white;border:1px solid #dce2ea;border-radius:16px;padding:32px}h1{line-height:1.2}</style></head><body><main><h1>' + title + '</h1><p>' + message + '</p></main></body></html>';\nreturn [{ json: { outcome, response_code, response_html } }];"
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211005",
+      "name": "Ergänzungsantwort erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        5920
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response_html }}",
+        "options": {
+          "responseCode": "={{ $json.response_code }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              },
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
+              }
+            ]
+          }
+        }
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211006",
+      "name": "Ergänzungsantwort anzeigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1504,
+        5920
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Nur eine neue Ergänzung mit eigener Nachricht benötigt die bestehende\n// Datenschutz-, Regel- und KI-Prüfung. Ohne Nachricht gilt die ausdrückliche\n// Serviceauswahl bereits als klare Bestätigung und wurde atomar gespeichert.\nconst result = $input.first().json;\nif (result.outcome !== 'accepted' || result.needs_evaluation !== true || !result.inquiry_id) return [];\nreturn [{ json: { inquiry_id: result.inquiry_id } }];"
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211007",
+      "name": "Nur neue Nachricht erneut auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        6080
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Zweig 6 – Kundenergänzung absenden (POST)\n\nPrüft Token, Serviceauswahl und optionale Nachricht. PostgreSQL sperrt Token und Anfrage, verbraucht den Token genau einmal, legt `inquiry_updates` an und erhöht `followup_count`. Ohne Nachricht bestätigt die explizite Auswahl den Service direkt. Mit Nachricht folgt die vorhandene Datenschutz- und KI-Auswertung. Ungültige oder wiederholte POSTs erzeugen keine Ergänzung. Der Roh-Token und Kundentext erscheinen nicht in der Antwort.",
+        "height": 280,
+        "width": 1632,
+        "color": 5
+      },
+      "id": "bf127f42-c87c-4d61-94a5-f75cf6211008",
+      "name": "Zweig 6 - Kundenergänzung absenden POST",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        112,
+        6288
+      ]
+    }
+  ],
+  "connections": {
+    "Anfrageformular": {
+      "main": [
+        [
+          {
+            "node": "Formularschlüssel erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formularschlüssel erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Formularangaben prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formularangaben prüfen": {
+      "main": [
+        [
+          {
+            "node": "Anfrage in PostgreSQL speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfrage in PostgreSQL speichern": {
+      "main": [
+        [
+          {
+            "node": "Bestätigungstoken erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigungstoken erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Bestätigungstoken hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigungstoken hashen": {
+      "main": [
+        [
+          {
+            "node": "Bestätigung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Versandaktion beanspruchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versandaktion beanspruchen": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Bestätigungslink senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Bestätigungslink senden": {
+      "main": [
+        [
+          {
+            "node": "Versand als erfolgreich markieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versand zur Prüfung markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail bestätigen": {
+      "main": [
+        [
+          {
+            "node": "Bestätigungstoken prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigungstoken prüfen": {
+      "main": [
+        [
+          {
+            "node": "Eingehenden Token hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingehenden Token hashen": {
+      "main": [
+        [
+          {
+            "node": "Bestätigung einmalig verbuchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigung einmalig verbuchen": {
+      "main": [
+        [
+          {
+            "node": "Bestätigungsantwort formulieren",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nur neue Bestätigung auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestätigungsantwort formulieren": {
+      "main": [
+        [
+          {
+            "node": "Bestätigung anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur neue Bestätigung auswerten": {
+      "main": [
+        [
+          {
+            "node": "Anfrage für Auswertung laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfrage für Auswertung laden": {
+      "main": [
+        [
+          {
+            "node": "Datenschutz und Serviceregeln prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datenschutz und Serviceregeln prüfen": {
+      "main": [
+        [
+          {
+            "node": "Nur sichere Nachricht weitergeben",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nur Datenschutzfall weitergeben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur sichere Nachricht weitergeben": {
+      "main": [
+        [
+          {
+            "node": "OpenAI-Payload erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur Datenschutzfall weitergeben": {
+      "main": [
+        [
+          {
+            "node": "Datenschutzfall lokal speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI-Payload erstellen": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Anfrage klassifizieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Anfrage klassifizieren": {
+      "main": [
+        [
+          {
+            "node": "KI-Ausgabe lokal prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI-Ausgabe lokal prüfen": {
+      "main": [
+        [
+          {
+            "node": "Erlaubte Platzhalter lokal einsetzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erlaubte Platzhalter lokal einsetzen": {
+      "main": [
+        [
+          {
+            "node": "KI-Auswertung lokal speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI-Auswertung lokal speichern": {
+      "main": [
+        [
+          {
+            "node": "Nur Eigentümerprüfung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur Eigentümerprüfung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Eigentümertoken erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümertoken erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümertoken hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümertoken hashen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerprüfung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerprüfung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Eigentümeradresse konfigurieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümeradresse konfigurieren": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerbenachrichtigung beanspruchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerbenachrichtigung beanspruchen": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Eigentümerprüfung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Eigentümerprüfung senden": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerbenachrichtigung erfolgreich",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Eigentümerbenachrichtigung zur Prüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerformular öffnen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümertoken aus Link lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümertoken aus Link lesen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümertoken aus Link hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümertoken aus Link hashen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerformular-Daten laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerformular-Daten laden": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerformular sicher erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerformular sicher erstellen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerformular anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerentscheidung empfangen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerentscheidung prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerentscheidung prüfen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümer-POST-Token hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümer-POST-Token hashen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzungstoken erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzungstoken erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzungstoken hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzungstoken hashen": {
+      "main": [
+        [
+          {
+            "node": "Eigentümerentscheidung speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eigentümerentscheidung speichern": {
+      "main": [
+        [
+          {
+            "node": "Entscheidungsantwort sicher erstellen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nur freigegebene Rückfrage versenden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entscheidungsantwort sicher erstellen": {
+      "main": [
+        [
+          {
+            "node": "Entscheidungsantwort anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur freigegebene Rückfrage versenden": {
+      "main": [
+        [
+          {
+            "node": "Kundenrückfrage beanspruchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenrückfrage beanspruchen": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Kundenrückfrage senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Kundenrückfrage senden": {
+      "main": [
+        [
+          {
+            "node": "Kundenrückfrage erfolgreich",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kundenrückfrage zur Prüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung öffnen": {
+      "main": [
+        [
+          {
+            "node": "Kundentoken aus Link lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundentoken aus Link lesen": {
+      "main": [
+        [
+          {
+            "node": "Kundentoken aus Link hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundentoken aus Link hashen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzung lesend prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung lesend prüfen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzung sicher darstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung sicher darstellen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzung anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung empfangen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzung prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung prüfen": {
+      "main": [
+        [
+          {
+            "node": "Eingehenden Kundentoken hashen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingehenden Kundentoken hashen": {
+      "main": [
+        [
+          {
+            "node": "Kundenergänzung einmalig speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundenergänzung einmalig speichern": {
+      "main": [
+        [
+          {
+            "node": "Ergänzungsantwort erstellen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nur neue Nachricht erneut auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergänzungsantwort erstellen": {
+      "main": [
+        [
+          {
+            "node": "Ergänzungsantwort anzeigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur neue Nachricht erneut auswerten": {
+      "main": [
+        [
+          {
+            "node": "Anfrage für Auswertung laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,346 @@
+{
+  "name": "Mixing & Mastering Demo - Notion neuer Eingang (Zeitplan)",
+  "nodes": [
+    {
+      "id": "dc1018a3-8c92-4fc4-870d-85e241471216",
+      "name": "Alle 5 Minuten pruefen",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        420
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "680c1cfa-a8a7-4d2e-a092-7dc47fd54fd2",
+      "name": "Naechste Revision beanspruchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        800,
+        420
+      ],
+      "parameters": {
+        "resource": "database",
+        "operation": "executeQuery",
+        "query": "WITH gate AS (\n  SELECT started_at FROM public.notion_sync_settings\n  WHERE id = true AND started_at IS NOT NULL\n), candidate AS (\n  SELECT i.id, 'notion_sync_v1:' || i.id::text || ':' || i.status || ':' ||\n  to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS') AS revision_key\n  FROM public.inquiries i CROSS JOIN gate s\n  WHERE i.email_verified_at IS NOT NULL\n    AND i.status IN ('evaluating', 'awaiting_owner_review',\n                     'awaiting_customer', 'ready_for_processing', 'manual_review')\n    AND i.created_at >= s.started_at\n    AND NOT EXISTS (SELECT 1 FROM public.outbound_actions a\n      WHERE a.idempotency_key = 'notion_sync_v1:' || i.id::text || ':' || i.status || ':' ||\n  to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS'))\n    AND NOT EXISTS (SELECT 1 FROM public.outbound_actions a\n      WHERE a.inquiry_id = i.id AND a.kind = 'notion_upsert'\n        AND a.state <> 'succeeded')\n    AND NOT (i.notion_page_id IS NULL AND EXISTS (\n      SELECT 1 FROM public.outbound_actions a\n      WHERE a.inquiry_id = i.id AND a.kind = 'notion_upsert'\n        AND a.state = 'succeeded' AND a.external_reference IS NOT NULL))\n  ORDER BY i.updated_at, i.id\n  LIMIT 1\n  FOR UPDATE OF i SKIP LOCKED\n), planned AS (\n  INSERT INTO public.outbound_actions\n    (inquiry_id, kind, idempotency_key, state, attempt_count, last_attempt_at)\n  SELECT id, 'notion_upsert', revision_key, 'in_progress', 1, now()\n  FROM candidate\n  ON CONFLICT (idempotency_key) DO NOTHING\n  RETURNING id, inquiry_id\n)\nSELECT p.id::text AS action_id, i.id::text AS inquiry_id,\n       i.notion_page_id\nFROM planned p JOIN public.inquiries i ON i.id = p.inquiry_id;",
+        "options": {
+          "queryBatching": "single"
+        }
+      }
+    },
+    {
+      "id": "67b01ddd-5c44-40ec-8ffa-f90ecd918c24",
+      "name": "Seite bereits verknuepft?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1110,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "0feeb9dc-9594-4f81-95ae-28c06d077336",
+              "leftValue": "={{ !!$json.notion_page_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "65c7e92f-db8c-4401-986e-99cc2bad1160",
+      "name": "Verknuepfte Seite und aktuellen Stand laden",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1400,
+        270
+      ],
+      "parameters": {
+        "resource": "database",
+        "operation": "executeQuery",
+        "query": "WITH incoming AS (\n  SELECT ($1::jsonb->>'action_id')::uuid AS action_id\n), invalid AS (\n  UPDATE public.outbound_actions a\n  SET state = 'needs_review', last_error_code = 'notion_page_link_lost'\n  FROM incoming p, public.inquiries i\n  WHERE a.id = p.action_id AND i.id = a.inquiry_id\n    AND a.kind = 'notion_upsert' AND a.state = 'in_progress'\n    AND (i.notion_page_id IS NULL OR i.notion_page_id !~*\n      '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$')\n  RETURNING a.id\n)\nSELECT a.id::text AS action_id, i.id::text AS inquiry_id,\n       i.notion_page_id, i.status, i.selected_service, i.confirmed_service,\n       i.service_unklar, i.first_name || ' ' || i.last_name AS customer_name,\n       i.email, i.message, i.download_url,\n       to_char(i.updated_at AT TIME ZONE 'UTC',\n         'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at\nFROM incoming p\nJOIN public.outbound_actions a ON a.id = p.action_id\nJOIN public.inquiries i ON i.id = a.inquiry_id\nWHERE a.kind = 'notion_upsert' AND a.state = 'in_progress'\n  AND i.notion_page_id ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$';",
+        "options": {
+          "queryBatching": "single",
+          "queryReplacement": "={{ JSON.stringify({ action_id: $json.action_id }) }}"
+        }
+      }
+    },
+    {
+      "id": "f29061f7-751c-4fe1-8f51-6d7bae9072d0",
+      "name": "Notion-Seite mit Titel anlegen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        1400,
+        590
+      ],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "dataSourceId": {
+          "__rl": true,
+          "value": "",
+          "mode": "id",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        },
+        "title": "={{ 'Anfrage ' + $json.inquiry_id.slice(0, 8) }}",
+        "propertiesUi": {
+          "propertyValues": []
+        },
+        "simple": false
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c69ba72a-ef9b-44b9-b75b-6b80d63f9648",
+      "name": "Neue Seiten-ID sichern und aktuellen Stand laden",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1700,
+        590
+      ],
+      "parameters": {
+        "resource": "database",
+        "operation": "executeQuery",
+        "query": "WITH incoming AS (\n  SELECT $1::jsonb AS value\n), parsed AS (\n  SELECT (value->>'action_id')::uuid AS action_id,\n         NULLIF(value->>'page_id', '') AS page_id\n  FROM incoming\n), linked AS (\n  UPDATE public.inquiries i\n  SET notion_page_id = p.page_id\n  FROM parsed p JOIN public.outbound_actions a ON a.id = p.action_id\n  WHERE i.id = a.inquiry_id\n    AND a.kind = 'notion_upsert' AND a.state = 'in_progress'\n    AND i.notion_page_id IS NULL\n    AND p.page_id ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'\n  RETURNING i.id, i.notion_page_id\n), failed AS (\n  UPDATE public.outbound_actions a\n  SET state = 'needs_review',\n      last_error_code = CASE WHEN p.page_id IS NULL THEN 'notion_create_error'\n                             ELSE 'notion_create_reconcile_required' END,\n      external_reference = p.page_id\n  FROM parsed p\n  WHERE a.id = p.action_id AND a.kind = 'notion_upsert'\n    AND a.state = 'in_progress' AND NOT EXISTS (SELECT 1 FROM linked)\n  RETURNING a.id\n)\nSELECT a.id::text AS action_id, i.id::text AS inquiry_id,\n       l.notion_page_id, i.status, i.selected_service, i.confirmed_service,\n       i.service_unklar, i.first_name || ' ' || i.last_name AS customer_name,\n       i.email, i.message, i.download_url,\n       to_char(i.updated_at AT TIME ZONE 'UTC',\n         'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS updated_at\nFROM linked l\nJOIN parsed p ON true\nJOIN public.inquiries i ON i.id = l.id\nJOIN public.outbound_actions a ON a.id = p.action_id\nWHERE a.kind = 'notion_upsert' AND a.state = 'in_progress';",
+        "options": {
+          "queryBatching": "single",
+          "queryReplacement": "={{ JSON.stringify({ action_id: $('Naechste Revision beanspruchen').first().json.action_id, page_id: $json.object === 'page' ? $json.id : null }) }}"
+        }
+      }
+    },
+    {
+      "id": "171330e0-8951-402f-9c3b-91c999b751b0",
+      "name": "Notion-Auftragsstand aktualisieren",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        1990,
+        420
+      ],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notion_page_id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Anfrage-ID|rich_text",
+              "type": "rich_text",
+              "textContent": "={{ $json.inquiry_id }}"
+            },
+            {
+              "key": "Bearbeitungsstand|select",
+              "type": "select",
+              "selectValue": "={{ ({evaluating:\"Prüfung läuft\",awaiting_owner_review:\"Eigentümerentscheidung offen\",awaiting_customer:\"Kundenrückmeldung offen\",ready_for_processing:\"Zur manuellen Sichtung bereit\",manual_review:\"Manuelle Prüfung nötig\"})[$json.status] }}"
+            },
+            {
+              "key": "Statuscode|rich_text",
+              "type": "rich_text",
+              "textContent": "={{ $json.status }}"
+            },
+            {
+              "key": "Ursprünglicher Service|select",
+              "type": "select",
+              "selectValue": "={{ ({mixing:\"Mixing\",mastering:\"Mastering\",mixing_and_mastering:\"Mixing + Mastering\"})[$json.selected_service] }}"
+            },
+            {
+              "key": "Bestätigter Service|select",
+              "type": "select",
+              "selectValue": "={{ $json.confirmed_service ? ({mixing:\"Mixing\",mastering:\"Mastering\",mixing_and_mastering:\"Mixing + Mastering\"})[$json.confirmed_service] : '' }}"
+            },
+            {
+              "key": "Service unklar|checkbox",
+              "type": "checkbox",
+              "checkboxValue": "={{ $json.service_unklar }}"
+            },
+            {
+              "key": "Aktualisiert|date",
+              "type": "date",
+              "date": "={{ $json.updated_at }}",
+              "includeTime": true
+            },
+            {
+              "key": "Kundenname|rich_text",
+              "type": "rich_text",
+              "textContent": "={{ $json.customer_name }}"
+            },
+            {
+              "key": "E-Mail|email",
+              "type": "email",
+              "emailValue": "={{ $json.email }}"
+            },
+            {
+              "key": "Ursprüngliche Nachricht|rich_text",
+              "type": "rich_text",
+              "textContent": "={{ $json.message }}"
+            },
+            {
+              "key": "Downloadlink|url",
+              "type": "url",
+              "urlValue": "={{ $json.download_url }}"
+            }
+          ]
+        },
+        "simple": false
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "972ad34c-8f35-40ff-a490-c5cc4601de4d",
+      "name": "Notion-Abgleich verbuchen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2290,
+        420
+      ],
+      "parameters": {
+        "resource": "database",
+        "operation": "executeQuery",
+        "query": "WITH incoming AS (\n  SELECT $1::jsonb AS value\n), parsed AS (\n  SELECT (value->>'action_id')::uuid AS action_id,\n         NULLIF(value->>'page_id', '') AS page_id\n  FROM incoming\n), recorded AS (\n  UPDATE public.outbound_actions a\n  SET state = CASE WHEN p.page_id = i.notion_page_id\n                       AND a.idempotency_key = 'notion_sync_v1:' || i.id::text || ':' || i.status || ':' ||\n  to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS')\n                   THEN 'succeeded' ELSE 'needs_review' END,\n      completed_at = CASE WHEN p.page_id = i.notion_page_id\n                              AND a.idempotency_key = 'notion_sync_v1:' || i.id::text || ':' || i.status || ':' ||\n  to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS')\n                          THEN now() ELSE NULL END,\n      external_reference = i.notion_page_id,\n      last_error_code = CASE WHEN p.page_id IS NULL THEN 'notion_update_error'\n                             WHEN p.page_id <> i.notion_page_id THEN 'notion_page_mismatch'\n                             WHEN a.idempotency_key <> 'notion_sync_v1:' || i.id::text || ':' || i.status || ':' ||\n  to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISSUS')\n                               THEN 'inquiry_changed'\n                             ELSE NULL END\n  FROM parsed p, public.inquiries i\n  WHERE a.id = p.action_id AND i.id = a.inquiry_id\n    AND a.kind = 'notion_upsert' AND a.state = 'in_progress'\n  RETURNING a.state, a.last_error_code, a.external_reference\n)\nSELECT state, last_error_code, external_reference FROM recorded;",
+        "options": {
+          "queryBatching": "single",
+          "queryReplacement": "={{ JSON.stringify({ action_id: $('Naechste Revision beanspruchen').first().json.action_id, page_id: $json.object === 'page' ? $json.id : null }) }}"
+        }
+      }
+    },
+    {
+      "id": "3b2dfb58-4f34-4420-a12a-293e4d6ccc19",
+      "name": "Betriebshinweis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        60
+      ],
+      "parameters": {
+        "width": 2360,
+        "height": 200,
+        "content": "## Notion-Abgleich fuer neue Anfragen\nDer Zeitplan prueft alle 5 Minuten genau eine neue oder geaenderte Anfrage. Er waehlt nur Anfragen mit `created_at >= notion_sync_settings.started_at`; solange `started_at` leer ist, verarbeitet er nichts. Erst Credentials selbst zuweisen, dann Zeitplan aktivieren und danach `started_at` in PostgreSQL auf `now()` setzen. Alte Anfragen bleiben ausgeschlossen. PostgreSQL ist massgeblich; unklare Notion-Ergebnisse landen in `needs_review` und werden nicht automatisch wiederholt. Keine E-Mail, kein OpenAI-Zugriff, kein Download."
+      }
+    }
+  ],
+  "connections": {
+    "Naechste Revision beanspruchen": {
+      "main": [
+        [
+          {
+            "node": "Seite bereits verknuepft?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite bereits verknuepft?": {
+      "main": [
+        [
+          {
+            "node": "Verknuepfte Seite und aktuellen Stand laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion-Seite mit Titel anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verknuepfte Seite und aktuellen Stand laden": {
+      "main": [
+        [
+          {
+            "node": "Notion-Auftragsstand aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion-Seite mit Titel anlegen": {
+      "main": [
+        [
+          {
+            "node": "Neue Seiten-ID sichern und aktuellen Stand laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neue Seiten-ID sichern und aktuellen Stand laden": {
+      "main": [
+        [
+          {
+            "node": "Notion-Auftragsstand aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion-Auftragsstand aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Notion-Abgleich verbuchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle 5 Minuten pruefen": {
+      "main": [
+        [
+          {
+            "node": "Naechste Revision beanspruchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
