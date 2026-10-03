@@ -1,6 +1,6 @@
 # n8n Portfolio
 
-Dieses Portfolio zeigt Automatisierungen, die ich mit n8n entwickelt habe. Jedes Projekt erklärt die Aufgabe, den Ablauf und das Ergebnis anhand künstlicher Beispiele. Für die Begutachtung sind weder Zugang zu meiner n8n-Instanz noch meine Credentials oder Daten eines Unternehmens nötig.
+Dieses Portfolio zeigt Automatisierungen, die ich mit Codex in n8n entwickelt habe. Jedes Projekt erklärt die Aufgabe, den Ablauf und das Ergebnis anhand künstlicher Beispiele. Für die Begutachtung sind weder Zugang zu meiner n8n-Instanz noch meine Credentials oder Daten eines Unternehmens nötig.
 
 ## Projekte
 
