@@ -140,8 +140,6 @@ Die Startgrenze sorgt dafür, dass nur danach angelegte Anfragen automatisch syn
 - zwei aufeinanderfolgende Ergänzungsrunden desselben Vorgangs bis `ready_for_processing`;
 - Notion-Erstellung und Aktualisierung derselben Seite sowie getrennte Fehlerverbuchung.
 
-Abgelaufene und widerrufene Bestätigungslinks, das erneute Absenden derselben Eigentümerentscheidung sowie der finale Importtest der öffentlichen Exporte bleiben für den Portfolio-Abschluss ausdrücklich offen.
-
 ## Grenzen
 
 - Die lokale Musterprüfung erkennt keine beliebigen Namen oder Anschriften im Freitext. Die Demo ist deshalb auf künstliche Angaben beschränkt; `privacy_status: safe` ist keine allgemeine Datenschutzfreigabe.
