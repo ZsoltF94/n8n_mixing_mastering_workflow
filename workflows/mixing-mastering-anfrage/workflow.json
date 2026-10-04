@@ -67,7 +67,7 @@
           "respondWithOptions": {
             "values": {
               "respondWith": "text",
-              "formSubmittedText": "Ihre Demo-Anfrage wurde gespeichert. Bitte verwenden Sie den Bestätigungslink aus der Test-E-Mail, damit die Anfrage weiterverarbeitet wird."
+              "formSubmittedText": "Vielen Dank für Ihre Anfrage.\nBitte bestätigen Sie Ihre E-Mail Adresse."
             }
           }
         }
@@ -262,8 +262,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1184,
-        1728
+        1072,
+        1520
       ]
     },
     {
@@ -288,7 +288,7 @@
       "typeVersion": 1.5,
       "position": [
         1440,
-        1728
+        1520
       ]
     },
     {
@@ -363,8 +363,8 @@
         "operation": "send",
         "sendTo": "={{ $('Formularangaben prüfen').first().json.email }}",
         "subject": "Bitte bestätigen Sie Ihre E-Mail-Adresse – Mixing-/Mastering-Anfrage",
-        "emailType": "text",
-        "message": "={{ 'Guten Tag ' + $('Formularangaben prüfen').first().json.first_name + ' ' + $('Formularangaben prüfen').first().json.last_name + ',\\n\\nvielen Dank für Ihre Demo-Anfrage. Bitte bestätigen Sie Ihre E-Mail-Adresse über den folgenden Link:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-email-bestaetigen?token=' + $('Bestätigungstoken erzeugen').first().json.verification_token + '\\n\\nDer Link ist 30 Minuten gültig und kann nur einmal verwendet werden.\\n\\nDies ist eine Portfolio-Demo. Bitte verwenden Sie ausschließlich Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "emailType": "html",
+        "message": "={{ (() => {\n  const data = $('Formularangaben prüfen').first().json;\n  const escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[character]);\n  const url = 'http://localhost:5678/webhook/mixing-mastering-email-bestaetigen?token=' + encodeURIComponent($('Bestätigungstoken erzeugen').first().json.verification_token);\n  return [\n    '<p>Guten Tag ' + escapeHtml(data.first_name) + ' ' + escapeHtml(data.last_name) + ',</p>',\n    '<p>vielen Dank für Ihre Demo-Anfrage. Bitte bestätigen Sie Ihre E-Mail-Adresse:</p>',\n    '<p><a href=\"' + url + '\">E-Mail bestätigen</a></p>',\n    '<p>Der Link ist 30 Minuten gültig und kann nur einmal verwendet werden.</p>',\n    '<p>Dies ist eine Portfolio-Demo. Bitte verwenden Sie ausschließlich Testdaten.</p>',\n    '<p>Freundliche Grüße<br>Mixing &amp; Mastering Demo</p>',\n  ].join('\\n');\n})() }}",
         "options": {
           "appendAttribution": false,
           "senderName": "Mixing & Mastering Demo"
@@ -434,7 +434,7 @@
     },
     {
       "parameters": {
-        "content": "## Gmail: Bestätigungslink senden\n\n- Empfänger ist die zuvor geprüfte Test-E-Mail-Adresse aus `Formularangaben prüfen`.\n- Der Klartext enthält Anrede, Demo-Hinweis, Gültigkeitsdauer und den einmaligen Bestätigungslink.\n- Der Link verwendet den nur in dieser Ausführung vorhandenen Roh-Token; PostgreSQL kennt ausschließlich dessen SHA-256-Hash.\n- `localhost:5678/webhook-test/...` verweist beim Öffnen auf die lokale n8n-Testinstanz. Der Webhook-Test-Listener muss dann aktiv sein.\n- Erfolgreiche und fehlgeschlagene Ausgaben laufen getrennt zu den beiden folgenden PostgreSQL-Nodes.\n- Gmail erhält keine Nachricht, keinen Downloadlink und keine Audiodateien.",
+        "content": "## Gmail: Bestätigungslink senden\n\n- Empfänger ist die zuvor geprüfte Test-E-Mail-Adresse aus `Formularangaben prüfen`.\n- Die HTML-Nachricht enthält Anrede, Demo-Hinweis, Gültigkeitsdauer und den einmaligen Bestätigungslink.\n- Der Link verwendet den nur in dieser Ausführung vorhandenen Roh-Token; PostgreSQL kennt ausschließlich dessen SHA-256-Hash.\n- `localhost:5678/webhook/...` verweist auf die lokale n8n-Instanz. Der Workflow muss für diesen Produktions-Webhook veröffentlicht sein.\n- Erfolgreiche und fehlgeschlagene Ausgaben laufen getrennt zu den beiden folgenden PostgreSQL-Nodes.\n- Gmail erhält keine Nachricht, keinen Downloadlink und keine Audiodateien.",
         "height": 420,
         "width": 364,
         "color": 3
@@ -444,7 +444,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        2184,
+        2192,
         608
       ]
     },
@@ -890,8 +890,8 @@
         "operation": "send",
         "sendTo": "={{ $('Eigentümeradresse konfigurieren').first().json.owner_email }}",
         "subject": "Demo-Anfrage benötigt Ihre Prüfung",
-        "emailType": "text",
-        "message": "={{ 'Guten Tag,\\n\\neine bestätigte Mixing-/Mastering-Demo-Anfrage benötigt Ihre Prüfung. Über den folgenden lokalen Link können Sie den vorgeschlagenen Rückfragetext ansehen, bearbeiten, freigeben oder ablehnen:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-owner-review?token=' + $('Eigentümertoken erzeugen').first().json.owner_review_token + '\\n\\nDer Link ist 24 Stunden gültig und kann nur einmal für eine Entscheidung verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.\\n\\nBitte verwenden Sie ausschließlich synthetische Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "emailType": "html",
+        "message": "={{ (() => {\n  const url = 'http://localhost:5678/webhook/mixing-mastering-owner-review?token=' + encodeURIComponent($('Eigentümertoken erzeugen').first().json.owner_review_token);\n  return [\n    '<p>Guten Tag,</p>',\n    '<p>eine bestätigte Mixing-/Mastering-Demo-Anfrage benötigt Ihre Prüfung. Über den folgenden lokalen Link können Sie den vorgeschlagenen Rückfragetext ansehen, bearbeiten, freigeben oder ablehnen:</p>',\n    '<p><a href=\"' + url + '\">Rückfrage prüfen</a></p>',\n    '<p>Der Link ist 24 Stunden gültig und kann nur einmal für eine Entscheidung verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.</p>',\n    '<p>Bitte verwenden Sie ausschließlich synthetische Testdaten.</p>',\n    '<p>Freundliche Grüße<br>Mixing &amp; Mastering Demo</p>',\n  ].join('\\n');\n})() }}",
         "options": {
           "appendAttribution": false,
           "senderName": "Mixing & Mastering Demo"
@@ -945,7 +945,7 @@
     },
     {
       "parameters": {
-        "content": "## Interne Eigentümerbenachrichtigung\n\n- Im Code-Node wird vor dem Test eine eigene Testadresse eingetragen.\n- Der Platzhalter `portfolio-owner@example.invalid` stoppt den Lauf vor der Versandbeanspruchung.\n- Die PostgreSQL-Abfrage beansprucht nur eine geplante `owner_notification` mit gültigem, offenem Eigentümer-Token.\n- Gmail erhält eine reine Textnachricht. Der Link enthält ausschließlich den zufälligen Token.\n- Name, Kunden-E-Mail, Nachricht, Serviceangaben, Downloadlink und Datenbank-IDs stehen weder im Link noch in dieser E-Mail.\n\n**Tabelle `outbound_actions` – UPDATE**\n\n- `pending → in_progress` erfolgt nur einmal und erst nach erneuter Token- und Review-Prüfung.\n\n**Tabellen `access_tokens` und `reply_reviews` – SELECT**\n\n- Token muss gültig, unbenutzt und nicht widerrufen sein; der Review muss `pending` sein.",
+        "content": "## Interne Eigentümerbenachrichtigung\n\n- Im Code-Node wird vor dem Test eine eigene Testadresse eingetragen.\n- Der Platzhalter `portfolio-owner@example.invalid` stoppt den Lauf vor der Versandbeanspruchung.\n- Die PostgreSQL-Abfrage beansprucht nur eine geplante `owner_notification` mit gültigem, offenem Eigentümer-Token.\n- Gmail erhält eine HTML-Nachricht mit beschriftetem Prüf-Link. Der Link enthält ausschließlich den zufälligen Token.\n- Name, Kunden-E-Mail, Nachricht, Serviceangaben, Downloadlink und Datenbank-IDs stehen weder im Link noch in dieser E-Mail.\n\n**Tabelle `outbound_actions` – UPDATE**\n\n- `pending → in_progress` erfolgt nur einmal und erst nach erneuter Token- und Review-Prüfung.\n\n**Tabellen `access_tokens` und `reply_reviews` – SELECT**\n\n- Token muss gültig, unbenutzt und nicht widerrufen sein; der Review muss `pending` sein.",
         "height": 384,
         "width": 656,
         "color": 5
@@ -1048,7 +1048,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Erzeugt eine eigenständige, sichere HTML-Seite aus dem lesenden Datenbankergebnis.\nconst data = $input.first().json;\nconst tokenSource = $('Eigentümertoken aus Link lesen').first().json;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\n\n// Jeder dynamische Wert wird vor der HTML-Ausgabe escaped. Dadurch können Nachricht,\n// Namen oder KI-Text keine eigenen HTML-Elemente oder Skripte einschleusen.\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;',\n  '<': '&lt;',\n  '>': '&gt;',\n  '\"': '&quot;',\n  \"'\": '&#39;',\n}[character]));\n\nconst serviceLabels = {\n  mixing: 'Mixing',\n  mastering: 'Mastering',\n  mixing_and_mastering: 'Mixing + Mastering',\n};\nconst reasonLabels = {\n  service_conflict: 'Serviceangabe widerspricht der Auswahl',\n  service_ambiguous: 'Serviceangabe ist nicht eindeutig',\n};\n\n// Das Layout verwendet nur eingebettetes CSS und kein Browser-JavaScript.\nconst page = (title, content) => [\n  '<!doctype html>',\n  '<html lang=\"de\">',\n  '<head>',\n  '<meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>',\n  ':root{color-scheme:light;--ink:#19212c;--muted:#5b6472;--line:#dce2ea;--panel:#ffffff;--bg:#f3f6fa;--accent:#3758d3;--danger:#a52b34}',\n  '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}',\n  'main{width:min(920px,calc(100% - 32px));margin:40px auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:clamp(22px,4vw,42px);box-shadow:0 14px 40px rgba(31,43,68,.08)}',\n  'h1{font-size:clamp(1.55rem,3vw,2.15rem);line-height:1.2;margin:0 0 10px}.intro{color:var(--muted);margin:0 0 28px}.badge{display:inline-block;padding:5px 10px;border-radius:999px;background:#fff3cd;color:#6f5200;font-size:.86rem;font-weight:700;margin-bottom:18px}',\n  '.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 26px}.field{border:1px solid var(--line);border-radius:10px;padding:13px 15px;min-width:0}.field.wide{grid-column:1/-1}.label{display:block;color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}.preserve{white-space:pre-wrap;overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}',\n  'form{border-top:1px solid var(--line);padding-top:26px}label{display:block;font-weight:700;margin-bottom:8px}textarea{width:100%;min-height:220px;resize:vertical;border:1px solid #aeb8c6;border-radius:10px;padding:14px;font:inherit;line-height:1.5;color:var(--ink)}textarea:focus{outline:3px solid rgba(55,88,211,.2);border-color:var(--accent)}.hint{color:var(--muted);font-size:.9rem;margin:7px 0 18px}.actions{display:flex;flex-wrap:wrap;gap:12px}.button{border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer}.approve{background:var(--accent);color:white}.reject{background:#f7e9eb;color:var(--danger)}.notice{border-left:4px solid var(--accent);padding:12px 16px;background:#eef2ff;border-radius:6px}.footer{color:var(--muted);font-size:.86rem;margin:24px 0 0}',\n  '@media(max-width:680px){main{margin:18px auto}.grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.actions{flex-direction:column}.button{width:100%}}',\n  '</style>',\n  '</head>',\n  '<body><main><section class=\"card\">',\n  content,\n  '</section></main></body>',\n  '</html>',\n].join('\\n');\n\nlet response_code = 200;\nlet response_html;\n\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(tokenSource.owner_review_token || '')) {\n  const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');\n  const service = serviceLabels[data.selected_service] || 'Unbekannt';\n  const reason = reasonLabels[data.review_reason] || 'Manuelle Klärung erforderlich';\n  const submitUrl = 'http://localhost:5678/webhook-test/mixing-mastering-owner-review-submit';\n  const content = [\n    '<span class=\"badge\">Interne Portfolio-Prüfung</span>',\n    '<h1>Rückfrage prüfen und bearbeiten</h1>',\n    '<p class=\"intro\">Der Link wurde gültig geprüft. Das Öffnen dieser Seite verändert noch keine Daten.</p>',\n    '<div class=\"grid\">',\n    '<div class=\"field\"><span class=\"label\">Name</span>' + escapeHtml(fullName) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Test-E-Mail</span>' + escapeHtml(data.email) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Ausgewählter Service</span>' + escapeHtml(service) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Prüfgrund</span>' + escapeHtml(reason) + '</div>',\n    '<div class=\"field wide\"><span class=\"label\">Nachricht</span><div class=\"preserve\">' + escapeHtml(data.message) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">Downloadlink als Text</span><div class=\"mono\">' + escapeHtml(data.download_url) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">KI-Zusammenfassung</span><div class=\"preserve\">' + escapeHtml(data.ai_summary) + '</div></div>',\n    '</div>',\n    '<form method=\"post\" action=\"' + submitUrl + '\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(tokenSource.owner_review_token) + '\">',\n    '<label for=\"edited_text\">Rückfragetext</label>',\n    '<textarea id=\"edited_text\" name=\"edited_text\" maxlength=\"2000\" required>' + escapeHtml(data.draft_text) + '</textarea>',\n    '<p class=\"hint\">Maximal 2.000 Zeichen. Bei Freigabe wird später genau der hier abgesendete Text verwendet.</p>',\n    '<div class=\"actions\">',\n    '<button class=\"button approve\" type=\"submit\" name=\"decision\" value=\"approve\">Freigeben und senden</button>',\n    '<button class=\"button reject\" type=\"submit\" name=\"decision\" value=\"reject\" formnovalidate>Ablehnen</button>',\n    '</div>',\n    '</form>',\n    '<p class=\"footer\">Lokale Portfolio-Demo · Der Downloadlink wird nicht geöffnet · Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Eigentümerprüfung', content);\n} else {\n  // Ungültige Zustände zeigen keine Anfragefelder und verraten keine interne ID.\n  const responses = {\n    invalid: [400, 'Ungültiger Prüf-Link', 'Dieser Prüf-Link ist ungültig.'],\n    expired: [410, 'Prüf-Link abgelaufen', 'Dieser Prüf-Link ist abgelaufen.'],\n    revoked: [410, 'Prüf-Link widerrufen', 'Dieser Prüf-Link ist nicht mehr gültig.'],\n    already_used: [409, 'Prüfung bereits abgeschlossen', 'Dieser Prüf-Link wurde bereits für eine Entscheidung verwendet.'],\n    already_decided: [409, 'Prüfung bereits abgeschlossen', 'Für diese Anfrage wurde bereits eine Entscheidung gespeichert.'],\n    unavailable: [409, 'Prüfung nicht verfügbar', 'Diese Anfrage kann mit dem Link derzeit nicht geprüft werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p><p class=\"footer\">Lokale Mixing-&amp;-Mastering-Portfolio-Demo</p>');\n}\n\nreturn [{ json: { outcome, response_code, response_html } }];"
+        "jsCode": "// Erzeugt eine eigenständige, sichere HTML-Seite aus dem lesenden Datenbankergebnis.\nconst data = $input.first().json;\nconst tokenSource = $('Eigentümertoken aus Link lesen').first().json;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\n\n// Jeder dynamische Wert wird vor der HTML-Ausgabe escaped. Dadurch können Nachricht,\n// Namen oder KI-Text keine eigenen HTML-Elemente oder Skripte einschleusen.\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;',\n  '<': '&lt;',\n  '>': '&gt;',\n  '\"': '&quot;',\n  \"'\": '&#39;',\n}[character]));\n\nconst serviceLabels = {\n  mixing: 'Mixing',\n  mastering: 'Mastering',\n  mixing_and_mastering: 'Mixing + Mastering',\n};\nconst reasonLabels = {\n  service_conflict: 'Serviceangabe widerspricht der Auswahl',\n  service_ambiguous: 'Serviceangabe ist nicht eindeutig',\n};\n\n// Das Layout verwendet nur eingebettetes CSS und kein Browser-JavaScript.\nconst page = (title, content) => [\n  '<!doctype html>',\n  '<html lang=\"de\">',\n  '<head>',\n  '<meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>',\n  ':root{color-scheme:light;--ink:#19212c;--muted:#5b6472;--line:#dce2ea;--panel:#ffffff;--bg:#f3f6fa;--accent:#3758d3;--danger:#a52b34}',\n  '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}',\n  'main{width:min(920px,calc(100% - 32px));margin:40px auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:clamp(22px,4vw,42px);box-shadow:0 14px 40px rgba(31,43,68,.08)}',\n  'h1{font-size:clamp(1.55rem,3vw,2.15rem);line-height:1.2;margin:0 0 10px}.intro{color:var(--muted);margin:0 0 28px}.badge{display:inline-block;padding:5px 10px;border-radius:999px;background:#fff3cd;color:#6f5200;font-size:.86rem;font-weight:700;margin-bottom:18px}',\n  '.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 26px}.field{border:1px solid var(--line);border-radius:10px;padding:13px 15px;min-width:0}.field.wide{grid-column:1/-1}.label{display:block;color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}.preserve{white-space:pre-wrap;overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}',\n  'form{border-top:1px solid var(--line);padding-top:26px}label{display:block;font-weight:700;margin-bottom:8px}textarea{width:100%;min-height:220px;resize:vertical;border:1px solid #aeb8c6;border-radius:10px;padding:14px;font:inherit;line-height:1.5;color:var(--ink)}textarea:focus{outline:3px solid rgba(55,88,211,.2);border-color:var(--accent)}.hint{color:var(--muted);font-size:.9rem;margin:7px 0 18px}.actions{display:flex;flex-wrap:wrap;gap:12px}.button{border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer}.approve{background:var(--accent);color:white}.reject{background:#f7e9eb;color:var(--danger)}.notice{border-left:4px solid var(--accent);padding:12px 16px;background:#eef2ff;border-radius:6px}.footer{color:var(--muted);font-size:.86rem;margin:24px 0 0}',\n  '@media(max-width:680px){main{margin:18px auto}.grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.actions{flex-direction:column}.button{width:100%}}',\n  '</style>',\n  '</head>',\n  '<body><main><section class=\"card\">',\n  content,\n  '</section></main></body>',\n  '</html>',\n].join('\\n');\n\nlet response_code = 200;\nlet response_html;\n\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(tokenSource.owner_review_token || '')) {\n  const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');\n  const service = serviceLabels[data.selected_service] || 'Unbekannt';\n  const reason = reasonLabels[data.review_reason] || 'Manuelle Klärung erforderlich';\n  const submitUrl = 'http://localhost:5678/webhook/mixing-mastering-owner-review-submit';\n  const content = [\n    '<span class=\"badge\">Interne Portfolio-Prüfung</span>',\n    '<h1>Rückfrage prüfen und bearbeiten</h1>',\n    '<p class=\"intro\">Der Link wurde gültig geprüft. Das Öffnen dieser Seite verändert noch keine Daten.</p>',\n    '<div class=\"grid\">',\n    '<div class=\"field\"><span class=\"label\">Name</span>' + escapeHtml(fullName) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Test-E-Mail</span>' + escapeHtml(data.email) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Ausgewählter Service</span>' + escapeHtml(service) + '</div>',\n    '<div class=\"field\"><span class=\"label\">Prüfgrund</span>' + escapeHtml(reason) + '</div>',\n    '<div class=\"field wide\"><span class=\"label\">Nachricht</span><div class=\"preserve\">' + escapeHtml(data.message) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">Downloadlink als Text</span><div class=\"mono\">' + escapeHtml(data.download_url) + '</div></div>',\n    '<div class=\"field wide\"><span class=\"label\">KI-Zusammenfassung</span><div class=\"preserve\">' + escapeHtml(data.ai_summary) + '</div></div>',\n    '</div>',\n    '<form method=\"post\" action=\"' + submitUrl + '\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(tokenSource.owner_review_token) + '\">',\n    '<label for=\"edited_text\">Rückfragetext</label>',\n    '<textarea id=\"edited_text\" name=\"edited_text\" maxlength=\"2000\" required>' + escapeHtml(data.draft_text) + '</textarea>',\n    '<p class=\"hint\">Maximal 2.000 Zeichen. Bei Freigabe wird später genau der hier abgesendete Text verwendet.</p>',\n    '<div class=\"actions\">',\n    '<button class=\"button approve\" type=\"submit\" name=\"decision\" value=\"approve\">Freigeben und senden</button>',\n    '<button class=\"button reject\" type=\"submit\" name=\"decision\" value=\"reject\" formnovalidate>Ablehnen</button>',\n    '</div>',\n    '</form>',\n    '<p class=\"footer\">Lokale Portfolio-Demo · Der Downloadlink wird nicht geöffnet · Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Eigentümerprüfung', content);\n} else {\n  // Ungültige Zustände zeigen keine Anfragefelder und verraten keine interne ID.\n  const responses = {\n    invalid: [400, 'Ungültiger Prüf-Link', 'Dieser Prüf-Link ist ungültig.'],\n    expired: [410, 'Prüf-Link abgelaufen', 'Dieser Prüf-Link ist abgelaufen.'],\n    revoked: [410, 'Prüf-Link widerrufen', 'Dieser Prüf-Link ist nicht mehr gültig.'],\n    already_used: [409, 'Prüfung bereits abgeschlossen', 'Dieser Prüf-Link wurde bereits für eine Entscheidung verwendet.'],\n    already_decided: [409, 'Prüfung bereits abgeschlossen', 'Für diese Anfrage wurde bereits eine Entscheidung gespeichert.'],\n    unavailable: [409, 'Prüfung nicht verfügbar', 'Diese Anfrage kann mit dem Link derzeit nicht geprüft werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p><p class=\"footer\">Lokale Mixing-&amp;-Mastering-Portfolio-Demo</p>');\n}\n\nreturn [{ json: { outcome, response_code, response_html } }];"
       },
       "id": "63fa45bc-4273-405d-b8d2-54301bf8c305",
       "name": "Eigentümerformular sicher erstellen",
@@ -1243,8 +1243,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1712,
-        4016
+        1680,
+        3808
       ]
     },
     {
@@ -1280,8 +1280,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1984,
-        4016
+        2000,
+        3808
       ]
     },
     {
@@ -1319,7 +1319,7 @@
     {
       "parameters": {
         "content": "# Zweig 1 – Anfrage erfassen\n\n**Start:** `Anfrageformular`\n\nFormulardaten prüfen und in PostgreSQL speichern, E-Mail-Bestätigung vorbereiten und den Bestätigungslink an die eigene Testadresse senden.\n\n**Ergebniswege:** Versand erfolgreich oder Versand zur manuellen Prüfung.",
-        "height": 1600,
+        "height": 1008,
         "width": 3088,
         "color": 7
       },
@@ -1328,8 +1328,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        144,
-        -448
+        160,
+        128
       ]
     },
     {
@@ -1419,8 +1419,8 @@
         "operation": "send",
         "sendTo": "={{ $('Kundenrückfrage beanspruchen').first().json.email }}",
         "subject": "Bitte ergänzen Sie Ihre Mixing-/Mastering-Anfrage",
-        "emailType": "text",
-        "message": "={{ 'Guten Tag,\\n\\n' + $('Kundenrückfrage beanspruchen').first().json.edited_text + '\\n\\nBitte ergänzen Sie die Angaben zu Ihrer Demo-Anfrage über den folgenden Link:\\n\\nhttp://localhost:5678/webhook-test/mixing-mastering-customer-followup?token=' + $('Kundenergänzungstoken erzeugen').first().json.customer_followup_token + '\\n\\nDer Link ist sieben Tage gültig und kann nur einmal verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.\\n\\nBitte verwenden Sie ausschließlich synthetische Testdaten.\\n\\nFreundliche Grüße\\nMixing & Mastering Demo' }}",
+        "emailType": "html",
+        "message": "={{ (() => {\n  const data = $('Kundenrückfrage beanspruchen').first().json;\n  const escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[character]);\n  const url = 'http://localhost:5678/webhook/mixing-mastering-customer-followup?token=' + encodeURIComponent($('Kundenergänzungstoken erzeugen').first().json.customer_followup_token);\n  return [\n    '<p>Guten Tag,</p>',\n    '<p>' + escapeHtml(data.edited_text).replace(/\\r\\n?|\\n/g, '<br>') + '</p>',\n    '<p>Bitte ergänzen Sie die Angaben zu Ihrer Demo-Anfrage über den folgenden Link:</p>',\n    '<p><a href=\"' + url + '\">Angaben ergänzen</a></p>',\n    '<p>Der Link ist sieben Tage gültig und kann nur einmal verwendet werden. Er funktioniert in dieser lokalen Portfolio-Demo ausschließlich auf dem Rechner, auf dem n8n unter localhost:5678 läuft.</p>',\n    '<p>Bitte verwenden Sie ausschließlich synthetische Testdaten.</p>',\n    '<p>Freundliche Grüße<br>Mixing &amp; Mastering Demo</p>',\n  ].join('\\n');\n})() }}",
         "options": {
           "appendAttribution": false,
           "senderName": "Mixing & Mastering Demo"
@@ -1490,7 +1490,7 @@
     },
     {
       "parameters": {
-        "content": "## Kundenversand und Ergebnis speichern\n\n**Gmail**\n- Sendet den bearbeiteten Rückfragetext und den lokalen Ergänzungslink als Klartext ausschließlich an die gespeicherte Testadresse.\n- Der Link enthält nur den sieben Tage gültigen Roh-Token; PostgreSQL kennt nur dessen SHA-256-Hash.\n\n**Tabellen `outbound_actions` und `inquiries` – UPDATE**\n- Gmail-Erfolg: Aktion `succeeded`, Abschlusszeit und Gmail-Nachrichten-ID; Anfrage `awaiting_customer`.\n- Unklarer Gmail-Ausgang: Aktion `needs_review` mit `clarification_email_gmail_error`; Anfrage `manual_review`.\n- Es gibt keinen automatischen Neuversand. Dadurch kann ein unklarer Gmail-Ausgang keine doppelte Kundenmail erzeugen.",
+        "content": "## Kundenversand und Ergebnis speichern\n\n**Gmail**\n- Sendet den bearbeiteten Rückfragetext und den lokalen Ergänzungslink als HTML-Nachricht ausschließlich an die gespeicherte Testadresse.\n- Der Link enthält nur den sieben Tage gültigen Roh-Token; PostgreSQL kennt nur dessen SHA-256-Hash.\n\n**Tabellen `outbound_actions` und `inquiries` – UPDATE**\n- Gmail-Erfolg: Aktion `succeeded`, Abschlusszeit und Gmail-Nachrichten-ID; Anfrage `awaiting_customer`.\n- Unklarer Gmail-Ausgang: Aktion `needs_review` mit `clarification_email_gmail_error`; Anfrage `manual_review`.\n- Es gibt keinen automatischen Neuversand. Dadurch kann ein unklarer Gmail-Ausgang keine doppelte Kundenmail erzeugen.",
         "height": 504,
         "width": 752,
         "color": 5
@@ -1577,7 +1577,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Rendert nur freigegebene, HTML-escaped Werte. Eine sichtbare Anfrage-ID\n// ist keine Berechtigung; das Formular sendet ausschließlich den Einmal-Token.\nconst data = $input.first().json;\nconst token = $('Kundentoken aus Link lesen').first().json.customer_followup_token;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;',\n}[character]));\nconst labels = { mixing: 'Mixing', mastering: 'Mastering', mixing_and_mastering: 'Mixing + Mastering' };\nconst page = (title, content) => [\n  '<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#19212c;font:16px/1.55 system-ui,sans-serif}main{width:min(720px,calc(100% - 32px));margin:38px auto;background:white;border:1px solid #dce2ea;border-radius:16px;padding:clamp(22px,4vw,40px)}h1{line-height:1.2}label{display:block;font-weight:700;margin:20px 0 8px}select,textarea{width:100%;padding:12px;border:1px solid #aeb8c6;border-radius:9px;font:inherit}textarea{min-height:145px;resize:vertical}button{margin-top:22px;background:#3758d3;color:white;border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700}.hint{color:#5b6472}.notice{border-left:4px solid #3758d3;padding:12px 16px;background:#eef2ff}</style>',\n  '</head><body><main>', content, '</main></body></html>',\n].join('\\n');\nlet response_code = 200;\nlet response_html;\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(token || '')) {\n  // Die obligatorische Auswahl ist bewusst nicht vorgewählt: der Kunde muss\n  // seinen gewünschten Umfang ausdrücklich bestätigen oder korrigieren.\n  const options = Object.entries(labels).map(([value, label]) =>\n    '<option value=\"' + value + '\">' + escapeHtml(label) + '</option>').join('');\n  const content = [\n    '<h1>Angaben zur Anfrage ergänzen</h1>',\n    '<p class=\"hint\">Bitte verwende für diese lokale Demo nur künstliche Angaben. Das Öffnen dieses Formulars verändert die Anfrage nicht.</p>',\n    '<p>Ursprünglich ausgewählt: <strong>' + escapeHtml(labels[data.selected_service] || 'Unbekannt') + '</strong></p>',\n    '<form method=\"post\" action=\"http://localhost:5678/webhook-test/mixing-mastering-customer-followup-submit\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(token) + '\">',\n    '<label for=\"service_selection\">Welchen Service wünschst du?</label>',\n    '<select id=\"service_selection\" name=\"service_selection\" required><option value=\"\" selected disabled>Bitte auswählen</option>' + options + '</select>',\n    '<label for=\"message\">Zusätzliche Nachricht (optional)</label>',\n    '<textarea id=\"message\" name=\"message\" maxlength=\"2000\"></textarea>',\n    '<p class=\"hint\">Die Serviceauswahl ist verpflichtend; die Nachricht ist optional. Der Link kann nur einmal verwendet werden.</p>',\n    '<button type=\"submit\">Ergänzung absenden</button></form>',\n    '<p class=\"hint\">Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Anfrage ergänzen', content);\n} else {\n  // Fehlseiten enthalten weder Serviceauswahl noch andere Anfragedaten.\n  const responses = {\n    invalid: [400, 'Ungültiger Ergänzungslink', 'Dieser Link ist ungültig.'],\n    expired: [410, 'Ergänzungslink abgelaufen', 'Dieser Link ist abgelaufen.'],\n    revoked: [410, 'Ergänzungslink widerrufen', 'Dieser Link ist nicht mehr gültig.'],\n    already_used: [409, 'Ergänzung bereits gesendet', 'Dieser Link wurde bereits verwendet.'],\n    unavailable: [409, 'Ergänzung nicht verfügbar', 'Die Anfrage kann mit diesem Link derzeit nicht ergänzt werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p>');\n}\nreturn [{ json: { outcome, response_code, response_html } }];"
+        "jsCode": "// Rendert nur freigegebene, HTML-escaped Werte. Eine sichtbare Anfrage-ID\n// ist keine Berechtigung; das Formular sendet ausschließlich den Einmal-Token.\nconst data = $input.first().json;\nconst token = $('Kundentoken aus Link lesen').first().json.customer_followup_token;\nconst outcome = typeof data.outcome === 'string' ? data.outcome : 'unavailable';\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\"']/g, (character) => ({\n  '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;',\n}[character]));\nconst labels = { mixing: 'Mixing', mastering: 'Mastering', mixing_and_mastering: 'Mixing + Mastering' };\nconst page = (title, content) => [\n  '<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">',\n  '<title>' + escapeHtml(title) + '</title>',\n  '<style>:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#19212c;font:16px/1.55 system-ui,sans-serif}main{width:min(720px,calc(100% - 32px));margin:38px auto;background:white;border:1px solid #dce2ea;border-radius:16px;padding:clamp(22px,4vw,40px)}h1{line-height:1.2}label{display:block;font-weight:700;margin:20px 0 8px}select,textarea{width:100%;padding:12px;border:1px solid #aeb8c6;border-radius:9px;font:inherit}textarea{min-height:145px;resize:vertical}button{margin-top:22px;background:#3758d3;color:white;border:0;border-radius:9px;padding:12px 18px;font:inherit;font-weight:700}.hint{color:#5b6472}.notice{border-left:4px solid #3758d3;padding:12px 16px;background:#eef2ff}</style>',\n  '</head><body><main>', content, '</main></body></html>',\n].join('\\n');\nlet response_code = 200;\nlet response_html;\nif (outcome === 'valid' && /^[0-9a-f]{64}$/i.test(token || '')) {\n  // Die obligatorische Auswahl ist bewusst nicht vorgewählt: der Kunde muss\n  // seinen gewünschten Umfang ausdrücklich bestätigen oder korrigieren.\n  const options = Object.entries(labels).map(([value, label]) =>\n    '<option value=\"' + value + '\">' + escapeHtml(label) + '</option>').join('');\n  const content = [\n    '<h1>Angaben zur Anfrage ergänzen</h1>',\n    '<p class=\"hint\">Bitte verwende für diese lokale Demo nur künstliche Angaben. Das Öffnen dieses Formulars verändert die Anfrage nicht.</p>',\n    '<p>Ursprünglich ausgewählt: <strong>' + escapeHtml(labels[data.selected_service] || 'Unbekannt') + '</strong></p>',\n    '<form method=\"post\" action=\"http://localhost:5678/webhook/mixing-mastering-customer-followup-submit\" autocomplete=\"off\">',\n    '<input type=\"hidden\" name=\"token\" value=\"' + escapeHtml(token) + '\">',\n    '<label for=\"service_selection\">Welchen Service wünschst du?</label>',\n    '<select id=\"service_selection\" name=\"service_selection\" required><option value=\"\" selected disabled>Bitte auswählen</option>' + options + '</select>',\n    '<label for=\"message\">Zusätzliche Nachricht (optional)</label>',\n    '<textarea id=\"message\" name=\"message\" maxlength=\"2000\"></textarea>',\n    '<p class=\"hint\">Die Serviceauswahl ist verpflichtend; die Nachricht ist optional. Der Link kann nur einmal verwendet werden.</p>',\n    '<button type=\"submit\">Ergänzung absenden</button></form>',\n    '<p class=\"hint\">Gültig bis: ' + escapeHtml(data.expires_at) + '</p>',\n  ].join('\\n');\n  response_html = page('Anfrage ergänzen', content);\n} else {\n  // Fehlseiten enthalten weder Serviceauswahl noch andere Anfragedaten.\n  const responses = {\n    invalid: [400, 'Ungültiger Ergänzungslink', 'Dieser Link ist ungültig.'],\n    expired: [410, 'Ergänzungslink abgelaufen', 'Dieser Link ist abgelaufen.'],\n    revoked: [410, 'Ergänzungslink widerrufen', 'Dieser Link ist nicht mehr gültig.'],\n    already_used: [409, 'Ergänzung bereits gesendet', 'Dieser Link wurde bereits verwendet.'],\n    unavailable: [409, 'Ergänzung nicht verfügbar', 'Die Anfrage kann mit diesem Link derzeit nicht ergänzt werden.'],\n  };\n  const [code, title, message] = responses[outcome] || responses.unavailable;\n  response_code = code;\n  response_html = page(title, '<h1>' + escapeHtml(title) + '</h1><p class=\"notice\">' + escapeHtml(message) + '</p>');\n}\nreturn [{ json: { outcome, response_code, response_html } }];"
       },
       "id": "950a5a2b-34a4-4a43-b624-763c90cb1005",
       "name": "Kundenergänzung sicher darstellen",
@@ -1628,17 +1628,17 @@
     {
       "parameters": {
         "content": "## Zweig 5 – Kundenergänzung öffnen (GET)\n\nLädt nur den sieben Tage gültigen `customer_followup`-Token. PostgreSQL prüft Hash, Zweck, Ablauf, Verwendung und `awaiting_customer` ausschließlich lesend. Anfragefelder werden nur im gültigen Fall zurückgegeben. Das Öffnen verbraucht keinen Token.",
-        "height": 248,
-        "width": 720,
-        "color": 5
+        "height": 680,
+        "width": 1824,
+        "color": 7
       },
       "id": "950a5a2b-34a4-4a43-b624-763c90cb1007",
       "name": "Zweig 5 - Kundenergänzung öffnen GET",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        112,
-        5440
+        0,
+        5072
       ]
     },
     {
@@ -1796,17 +1796,17 @@
     {
       "parameters": {
         "content": "## Zweig 6 – Kundenergänzung absenden (POST)\n\nPrüft Token, Serviceauswahl und optionale Nachricht. PostgreSQL sperrt Token und Anfrage, verbraucht den Token genau einmal, legt `inquiry_updates` an und erhöht `followup_count`. Ohne Nachricht bestätigt die explizite Auswahl den Service direkt. Mit Nachricht folgt die vorhandene Datenschutz- und KI-Auswertung. Ungültige oder wiederholte POSTs erzeugen keine Ergänzung. Der Roh-Token und Kundentext erscheinen nicht in der Antwort.",
-        "height": 280,
-        "width": 1632,
-        "color": 5
+        "height": 488,
+        "width": 1904,
+        "color": 7
       },
       "id": "bf127f42-c87c-4d61-94a5-f75cf6211008",
       "name": "Zweig 6 - Kundenergänzung absenden POST",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        112,
-        6288
+        -16,
+        5824
       ]
     }
   ],

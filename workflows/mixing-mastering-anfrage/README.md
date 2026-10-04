@@ -19,8 +19,8 @@ flowchart TD
     B --> C[Gmail: Bestätigungslink]
     C --> D{Link gültig und unbenutzt?}
     D -- Nein --> E[Kontrollierte Fehlerantwort]
-    D -- Ja --> F[Lokale Pseudonymisierung und Serviceregeln]
-    F --> G[OpenAI erhält nur Service und bereinigte Nachricht]
+    D -- Ja --> F[Lokale Musterprüfung und Serviceregeln]
+    F --> G[OpenAI erhält Service und lokal geprüfte Nachricht]
     G --> H{Anfrage eindeutig?}
     H -- Ja --> I[(ready_for_processing)]
     H -- Nein --> J[(awaiting_owner_review)]
@@ -39,12 +39,14 @@ flowchart TD
 
 ### Datenschutzgrenze vor OpenAI
 
-Der OpenAI-Node erhält ausschließlich:
+Die an den OpenAI-Node übergebene Payload enthält nur:
 
 - den intern normalisierten Servicewert;
-- die lokal geprüfte Nachricht mit Platzhaltern wie `[[PII_NAME_1]]`.
+- die Nachricht nach der lokalen Musterprüfung, gegebenenfalls mit Platzhaltern wie `[[PII_NAME_1]]`.
 
-Name, E-Mail-Adresse, Downloadlink, interne IDs, Tokens und die lokale Platzhalterzuordnung fehlen in der KI-Payload. Erlaubte Namensplatzhalter werden erst nach der lokalen Prüfung der KI-Ausgabe wieder eingesetzt. Nicht sicher bereinigte Eingaben wechseln ohne KI-Aufruf in die manuelle Prüfung.
+Die separaten Formularfelder für Name, E-Mail-Adresse und Downloadlink sowie interne IDs, Tokens und die lokale Platzhalterzuordnung fehlen in der KI-Payload. Im Nachrichtentext ersetzt die lokale Prüfung bekannte Formularnamen und bestimmte erkennbare Kontaktmuster. Erkennt sie einen verbleibenden Kontaktwert oder eine ungeklärte Selbstbenennung, geht die Anfrage ohne KI-Aufruf in die manuelle Prüfung. Erlaubte Namensplatzhalter werden erst nach der lokalen Prüfung der KI-Ausgabe wieder eingesetzt.
+
+Diese Musterprüfung garantiert keine vollständige Entfernung personenbezogener Angaben aus beliebigem Freitext. Ein fremder Name wie „Bitte Toni Muster kontaktieren“ oder eine Anschrift wie „Meine Adresse ist Musterstraße 5“ kann unverändert bleiben und dennoch `privacy_status: safe` erhalten. Deshalb dürfen in dieser Demo ausschließlich künstliche Nachrichtentexte verwendet werden; für echte Anfragen müsste die Datenschutzprüfung vor dem KI-Aufruf erweitert und unter realistischen Eingaben geprüft werden.
 
 Downloadlinks werden als Text gespeichert und weder geöffnet noch heruntergeladen.
 
@@ -95,9 +97,9 @@ Die Rolle und das Passwort werden bewusst außerhalb dieses Portfolios angelegt.
 1. `workflow.json` in n8n importieren.
 2. Den PostgreSQL-, Gmail- und OpenAI-Nodes die eigenen Credentials zuweisen.
 3. Im Node **Eigentümeradresse konfigurieren** eine eigene Testadresse eintragen.
-4. Den Workflow im Testmodus starten und ausschließlich künstliche Daten absenden.
+4. Den Workflow auf der lokalen Instanz veröffentlichen und ausschließlich künstliche Daten absenden.
 
-Die HTML-Formulare verweisen absichtlich auf `http://localhost:5678/webhook-test/...`. Dadurch sind die einzelnen Zweige in einer lokalen Docker-Demo getrennt testbar. Für eine andere Basisadresse oder den Produktivmodus müssen diese Formularziele angepasst werden.
+Die Links in den E-Mails und die HTML-Formulare verweisen auf `http://localhost:5678/webhook/...`. Diese Produktions-Webhooks sind erst nach dem Veröffentlichen des Workflows erreichbar. Die Links funktionieren nur auf dem Rechner, auf dem n8n unter dieser Adresse erreichbar ist. Für eine andere Basisadresse müssen alle fünf fest eingetragenen Link- und Formularziele angepasst werden. Ein Test ausschließlich im Editor-Testmodus erfordert entsprechend `webhook-test/...` an diesen Stellen.
 
 ### Notion-Abgleich
 
@@ -132,7 +134,7 @@ Die Startgrenze sorgt dafür, dass nur danach angelegte Anfragen automatisch syn
 - gültige E-Mail-Bestätigung und erneute Verwendung desselben Links;
 - ungültiger Bestätigungslink;
 - klare, widersprüchliche und mehrdeutige Serviceangaben;
-- Sperre vor OpenAI bei nicht sicher bereinigtem Freitext;
+- Sperre vor OpenAI bei von der lokalen Musterprüfung erkannten, nicht bereinigten Kontaktangaben;
 - bearbeitete Eigentümerfreigabe mit erfolgreichem Kundenversand;
 - Ablehnung ohne Kundenversand;
 - zwei aufeinanderfolgende Ergänzungsrunden desselben Vorgangs bis `ready_for_processing`;
@@ -142,6 +144,8 @@ Abgelaufene und widerrufene Bestätigungslinks, das erneute Absenden derselben E
 
 ## Grenzen
 
+- Die lokale Musterprüfung erkennt keine beliebigen Namen oder Anschriften im Freitext. Die Demo ist deshalb auf künstliche Angaben beschränkt; `privacy_status: safe` ist keine allgemeine Datenschutzfreigabe.
+- Für Fehler des OpenAI-Nodes gibt es im Export noch keinen fachlichen Fehlerpfad. Bei einem Node-Fehler endet der Lauf nach dem aktuellen Ablauf voraussichtlich, während die Anfrage auf `evaluating` bleiben kann. In einer echten Umgebung muss ein Fehlerpfad ergänzt werden, der den Fall in einen definierten Prüfstatus überführt und die manuelle Wiederaufnahme regelt. Ein solcher Ausfall wurde nicht live getestet.
 - Die Demo nimmt keine Dateien entgegen und öffnet keine Downloadlinks.
 - Gmail bietet in diesem Aufbau keine externe Idempotenzgarantie. Ein unklarer Versand wird deshalb zur manuellen Prüfung angehalten.
 - Rechnungsstellung, Auftragsannahme und Beginn der Audioarbeit bleiben manuelle Entscheidungen.
